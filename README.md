@@ -1,2 +1,2 @@
 # Werewolf
-This is currently under development and is no-where near ready to use.
+This is currently under development and is nowhere near ready to use.
