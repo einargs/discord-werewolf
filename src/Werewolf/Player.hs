@@ -2,8 +2,9 @@ module Werewolf.Player
   ( playerTeams
   , actualTeam
   , seerTeam
-  , hasRole
   , playerRole
+  , hasRole
+  , onTeam
   , Player(name, roleData, modifiers, status)
   , PlayerName
   , Role
@@ -191,3 +192,6 @@ seerTeam = snd . playerTeams
 
 hasRole :: Role -> Player -> Bool
 hasRole role Player{roleData} = role == (roleForData roleData)
+
+onTeam :: Team -> Player -> Bool
+onTeam team = (team==) . actualTeam
