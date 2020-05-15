@@ -2,17 +2,23 @@ module Werewolf.Player
   ( playerTeams
   , actualTeam
   , seerTeam
+  , docTeamsForRole
   , playerRole
   , hasRole
   , onTeam
-  , Player(name, roleData, modifiers, status)
-  , PlayerName
-  , Role
-  , Modifier
-  , Team
+  , allRoles
+  , Player(..)
+  , PlayerName(..)
+  , Role(..)
+  , RoleData(..)
+  , Modifier(..)
+  , Team(..)
+  , PlayerStatus(..)
+  , LycanStatus
   ) where
 
 import Discord.Types (UserId)
+import Optics.TH (makeFieldLabelsWith, noPrefixFieldLabels)
 
 data Role
   = Werewolf
@@ -43,7 +49,15 @@ data Role
   | Monster
   | Turncoat
   | Villager
-  deriving (Show, Eq, Enum)
+  deriving (Show, Eq, Enum, Bounded)
+
+allRoles :: [Role]
+allRoles = [minBound..maxBound]
+
+data LycanStatus
+  = Turned
+  | Unturned
+  deriving (Show, Eq)
 
 data RoleData
   = WerewolfData
@@ -52,29 +66,60 @@ data RoleData
   | SpellcasterData Bool -- ^ Has hexed someone
   | ToughWolfData Bool -- ^ Has been lynched once
   | TraitorData
-  | WarlockData
+  | WarlockData Bool -- ^ Has cursed someone
   | DoctorData
   | SeerData
   | BodyguardData
-  | GuardianAngelData PlayerName -- ^ last guarded
+  | GuardianAngelData (Maybe PlayerName) -- ^ last guarded
   | HuntressData Bool -- ^ Has the huntress killed someone
   | HarlotData
   | HunterData
   | MentalistData
   | MadScientistData
-  | CupidData
+  | CupidData Bool -- ^ Has the cupid linked two people
   | MysticData
   | ProphetData
   | RevealerData
-  | LycanData Bool -- ^ Has the lycan been turned
+  | LycanData LycanStatus -- ^ Has the lycan been turned
   | MasonData
   | GunnerData Int -- ^ Remaining bullets
   | PrinceData
   | DoppelgangerData (Maybe PlayerName) -- ^ doppelganger target
   | MonsterData
-  | TurncoatData
+  | TurncoatData Team
   | VillagerData
   deriving (Show, Eq)
+
+initialDataFor :: Role -> RoleData
+initialDataFor = \case
+  Werewolf -> WerewolfData
+  Werecub -> WerecubData
+  Werekitten -> WerekittenData
+  Spellcaster -> SpellcasterData False
+  ToughWolf -> ToughWolfData False
+  Traitor -> TraitorData
+  Warlock -> WarlockData False
+  Doctor -> DoctorData
+  Seer -> SeerData
+  Bodyguard -> BodyguardData
+  GuardianAngel -> GuardianAngelData Nothing
+  Huntress -> HuntressData False
+  Harlot -> HarlotData
+  Hunter -> HunterData
+  Mentalist -> MentalistData
+  MadScientist -> MadScientistData
+  Cupid -> CupidData False
+  Mystic -> MysticData
+  Prophet -> ProphetData
+  Revealer -> RevealerData
+  Lycan -> LycanData Unturned
+  Mason -> MasonData
+  Gunner -> GunnerData 2
+  Prince -> PrinceData
+  Doppelganger -> DoppelgangerData Nothing
+  Monster -> MonsterData
+  Turncoat -> TurncoatData NeutralTeam
+  Villager -> VillagerData
 
 roleForData :: RoleData -> Role
 roleForData = \case
@@ -84,7 +129,7 @@ roleForData = \case
   SpellcasterData _ -> Spellcaster
   ToughWolfData _ -> ToughWolf
   TraitorData -> Traitor
-  WarlockData -> Warlock
+  WarlockData _ -> Warlock
   DoctorData -> Doctor
   SeerData -> Seer
   BodyguardData -> Bodyguard
@@ -94,7 +139,7 @@ roleForData = \case
   HunterData -> Hunter
   MentalistData -> Mentalist
   MadScientistData -> MadScientist
-  CupidData -> Cupid
+  CupidData _ -> Cupid
   MysticData -> Mystic
   ProphetData -> Prophet
   RevealerData -> Revealer
@@ -104,7 +149,7 @@ roleForData = \case
   PrinceData -> Prince
   DoppelgangerData _ -> Doppelganger
   MonsterData -> Monster
-  TurncoatData -> Turncoat
+  TurncoatData _ -> Turncoat
   VillagerData -> Villager
 
 data Modifier
@@ -121,12 +166,13 @@ data Team
 -- | Returns a tuple of the role's actual
 -- team and the team that the seer sees
 -- them as being on.
-roleTeams :: Role -> (Team, Team)
-roleTeams = let
-  w = WerewolfTeam
-  v = VillagerTeam
-  n = NeutralTeam
-  in \case
+--
+-- This function is primarily intended to be
+-- used for help commands; use teamsForRoleData
+-- to actually get the correct team based on
+-- role data.
+docTeamsForRole :: Role -> (Team, Team)
+docTeamsForRole = \case
   Werewolf -> (w, w)
   Werecub -> (w, w)
   Werekitten -> (w, v)
@@ -155,6 +201,53 @@ roleTeams = let
   Monster -> (n, w)
   Turncoat -> (n, n)
   Villager -> (v, v)
+  where
+    w = WerewolfTeam
+    v = VillagerTeam
+    n = NeutralTeam
+
+-- | Returns a tuple of the role's actual
+-- team and the team that the seer sees
+-- them as being on.
+--
+-- This takes into account information from
+-- the role data (e.g. whether the lycan has
+-- been turned).
+teamsForRoleData :: RoleData -> (Team, Team)
+teamsForRoleData = \case
+  WerewolfData -> (w, w)
+  WerecubData -> (w, w)
+  WerekittenData -> (w, v)
+  SpellcasterData _ -> (w, v)
+  ToughWolfData _ -> (w, w)
+  TraitorData -> (w, v)
+  WarlockData _ -> (w, v)
+  DoctorData -> (v, v)
+  SeerData -> (v, v)
+  BodyguardData -> (v, v)
+  GuardianAngelData _ -> (v, v)
+  HuntressData _ -> (v, v)
+  HarlotData -> (v, v)
+  HunterData -> (v, v)
+  MentalistData -> (v, v)
+  MadScientistData -> (v, w)
+  CupidData _ -> (v, v)
+  MysticData -> (v, v)
+  ProphetData -> (v, v)
+  RevealerData -> (v, v)
+  LycanData Turned -> (w, w)
+  LycanData Unturned -> (v, w)
+  MasonData -> (v, v)
+  GunnerData _ -> (v, v)
+  PrinceData -> (v, v)
+  DoppelgangerData _ -> (n, v)
+  MonsterData -> (n, w)
+  TurncoatData _ -> (n, n)
+  VillagerData -> (v, v)
+  where
+    w = WerewolfTeam
+    v = VillagerTeam
+    n = NeutralTeam
 
 newtype PlayerName = PlayerName UserId
   deriving (Show, Eq, Ord)
@@ -169,6 +262,8 @@ data Player = Player
   , status :: PlayerStatus
   } deriving (Show, Eq)
 
+makeFieldLabelsWith noPrefixFieldLabels ''Player
+
 playerRole :: Player -> Role
 playerRole = roleForData . roleData
 
@@ -179,7 +274,7 @@ playerTeams :: Player -> (Team, Team)
 playerTeams Player {roleData, modifiers} =
   if Minion `elem` modifiers
     then (WerewolfTeam, WerewolfTeam)
-    else roleTeams $ roleForData roleData
+    else teamsForRoleData roleData
 
 -- | Returns the player's actual team.
 actualTeam :: Player -> Team
@@ -191,7 +286,7 @@ seerTeam :: Player -> Team
 seerTeam = snd . playerTeams
 
 hasRole :: Role -> Player -> Bool
-hasRole role Player{roleData} = role == (roleForData roleData)
+hasRole role Player{roleData} = role == roleForData roleData
 
 onTeam :: Team -> Player -> Bool
 onTeam team = (team==) . actualTeam

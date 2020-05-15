@@ -27,6 +27,12 @@ dependencies:
 - random-shuffle >= 0.0.4
 - MonadRandom >= 0.5.1.2
 - discord-haskell >= 1.5.2
+- optics >= 0.3
+- optics-th >= 0.3
+- text >= 1.2.4.0
+- megaparsec >= 8.0.0
+- monad-coroutine >= 0.9.0.4
+- stm >= 2.5
 
 library:
   source-dirs: src
@@ -36,20 +42,27 @@ ghc-options: []
 default-extensions:
 - BlockArguments
 - LambdaCase
+- MultiWayIf
 - GADTs
 - NamedFieldPuns
 - ConstraintKinds
-  #- DataKinds
+- OverloadedStrings
+- OverloadedLabels
+- DuplicateRecordFields
+- TemplateHaskell
+- FlexibleContexts
+- FlexibleInstances
+- UndecidableInstances
+- MultiParamTypeClasses
+- DataKinds
+- GeneralizedNewtypeDeriving
   #- KindSignatures
   #- PolyKinds
   #- TypeApplications
-  #- OverloadedStrings
-  #- FlexibleContexts
   #- RankNTypes
   #- ScopedTypeVariables
   #- TypeOperators
   #- TypeFamilies
-  #- TemplateHaskell
 
 executables:
   werewolf-exe:

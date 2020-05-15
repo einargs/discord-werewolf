@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 926862c19d5f5a1c5c0cd8d7ca9c516676c4136ceafe376377ea275fa12f89d8
+-- hash: 078a28da6aece1627c7f1083f7133e129f39d3de11d20bcf01e98906e5c5fb21
 
 name:           werewolf
 version:        0.1.0.0
@@ -27,22 +27,31 @@ source-repository head
 
 library
   exposed-modules:
-      Lib
+      Handler
+      Run
       Werewolf.Game
+      Werewolf.Play
       Werewolf.Player
+      Werewolf.Start
   other-modules:
       Paths_werewolf
   hs-source-dirs:
       src
-  default-extensions: BlockArguments LambdaCase GADTs NamedFieldPuns ConstraintKinds
+  default-extensions: BlockArguments LambdaCase MultiWayIf GADTs NamedFieldPuns ConstraintKinds OverloadedStrings OverloadedLabels DuplicateRecordFields TemplateHaskell FlexibleContexts FlexibleInstances UndecidableInstances MultiParamTypeClasses DataKinds GeneralizedNewtypeDeriving
   build-depends:
       MonadRandom >=0.5.1.2
     , base >=4.7 && <5
     , containers >=0.6.2.1
     , discord-haskell >=1.5.2
     , listsafe >=0.1.0.1
+    , megaparsec >=8.0.0
+    , monad-coroutine >=0.9.0.4
     , mtl >=2.2.2
+    , optics >=0.3
+    , optics-th >=0.3
     , random-shuffle >=0.0.4
+    , stm >=2.5
+    , text >=1.2.4.0
   default-language: Haskell2010
 
 executable werewolf-exe
@@ -51,7 +60,7 @@ executable werewolf-exe
       Paths_werewolf
   hs-source-dirs:
       app
-  default-extensions: BlockArguments LambdaCase GADTs NamedFieldPuns ConstraintKinds
+  default-extensions: BlockArguments LambdaCase MultiWayIf GADTs NamedFieldPuns ConstraintKinds OverloadedStrings OverloadedLabels DuplicateRecordFields TemplateHaskell FlexibleContexts FlexibleInstances UndecidableInstances MultiParamTypeClasses DataKinds GeneralizedNewtypeDeriving
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       MonadRandom >=0.5.1.2
@@ -59,8 +68,14 @@ executable werewolf-exe
     , containers >=0.6.2.1
     , discord-haskell >=1.5.2
     , listsafe >=0.1.0.1
+    , megaparsec >=8.0.0
+    , monad-coroutine >=0.9.0.4
     , mtl >=2.2.2
+    , optics >=0.3
+    , optics-th >=0.3
     , random-shuffle >=0.0.4
+    , stm >=2.5
+    , text >=1.2.4.0
     , werewolf
   default-language: Haskell2010
 
@@ -71,7 +86,7 @@ test-suite werewolf-test
       Paths_werewolf
   hs-source-dirs:
       test
-  default-extensions: BlockArguments LambdaCase GADTs NamedFieldPuns ConstraintKinds
+  default-extensions: BlockArguments LambdaCase MultiWayIf GADTs NamedFieldPuns ConstraintKinds OverloadedStrings OverloadedLabels DuplicateRecordFields TemplateHaskell FlexibleContexts FlexibleInstances UndecidableInstances MultiParamTypeClasses DataKinds GeneralizedNewtypeDeriving
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       MonadRandom >=0.5.1.2
@@ -79,7 +94,13 @@ test-suite werewolf-test
     , containers >=0.6.2.1
     , discord-haskell >=1.5.2
     , listsafe >=0.1.0.1
+    , megaparsec >=8.0.0
+    , monad-coroutine >=0.9.0.4
     , mtl >=2.2.2
+    , optics >=0.3
+    , optics-th >=0.3
     , random-shuffle >=0.0.4
+    , stm >=2.5
+    , text >=1.2.4.0
     , werewolf
   default-language: Haskell2010

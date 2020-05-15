@@ -1,9 +1,19 @@
-module Werewolf.Game where
+module Werewolf.Game
+  ( Victory(..)
+  , Message(..)
+  , Event(..)
+  , Action(..)
+  , ActionInfo(..)
+  , Game(..)
+  , Phase(..)
+  , Round(..)
+  , validPhases
+  , playerCan
+  ) where
 
-import Control.Monad.Random
-import Control.Monad.State.Class
-
-import Data.List (null)
+import qualified Data.Text as T
+import Optics (view)
+import Optics.TH (makeFieldLabelsWith, noPrefixFieldLabels)
 
 import Werewolf.Player
 
@@ -11,26 +21,32 @@ data Victory
   = WerewolfVictory
   | VillagerVictory
   | MonsterVictory
+  deriving (Show, Eq)
 
 data Message
-  = PM PlayerName String
-  | Announce String
+  = PM PlayerName T.Text
+  | Announce T.Text
+  deriving (Show, Eq)
 
+-- | Events other than actions should not have any effects on the
+-- state of the game; rather they are used to passively log an occurance.
 data Event
   = PlayerAction Action
   | DayEnd
   | NightEnd
   | SendMessage Message
+  | PlayerDeath PlayerName
   | Victory Victory
   deriving (Show, Eq)
 
 data Action = Action PlayerName ActionInfo
   deriving (Show, Eq)
 
+-- | These correspond directly to commands that players will
+-- enter.
 data ActionInfo
   = Accuse PlayerName
   | LynchVote Bool
-  | Lynch PlayerName
   | WerewolfKill PlayerName
   | SpellcasterHex PlayerName
   | DoctorRevive PlayerName
@@ -41,16 +57,35 @@ data ActionInfo
   | HarlotHideWith PlayerName
   | HunterRevenge PlayerName
   | MentalistCompare PlayerName PlayerName
-  | MadScientistExplode PlayerName PlayerName
   | CupidArrow PlayerName PlayerName
   | ProphetVision Role
-  | RevealerKill PlayerName PlayerName
+  | RevealerKill PlayerName
   | MasonReveal
   | GunnerShoot PlayerName
   | DoppelgangerChoose PlayerName
-  | DoppelgangerBecome PlayerName
   | TurncoatSwitch Team
   deriving (Show, Eq)
+
+{-data ActionTag
+  = AccuseTag
+  | LynchVoteTag
+  | WerewolfKillTag
+  | SpellcasterHexTag
+  | DoctorReviveTag
+  | SeerClairvoyanceTag
+  | BodyguardProtectTag
+  | GuardianAngelProtectTag
+  | HuntressKillTag
+  | HarlotHideWithTag
+  | HunterRevengeTag
+  | MentalistCompareTag
+  | CupidArrowTag
+  | ProphetVisionTag
+  | RevealerKillTag
+  | MasonRevealTag
+  | GunnerShootTag
+  | DoppelgangerChooseTag
+  | TurncoatSwitchTag-}
 
 data Phase = Day | Night
   deriving (Show, Eq)
@@ -61,74 +96,83 @@ validPhases (Action _ info) = case info of
   Accuse _ -> [Day]
   LynchVote _ -> [Day]
   WerewolfKill _ -> [Day]
-  HarlotHideWith _ -> [Night]
   SpellcasterHex _ -> [Night]
   DoctorRevive _ -> [Night]
   SeerClairvoyance _ -> [Night]
+  BodyguardProtect _ -> [Night]
+  GuardianAngelProtect _ -> [Night]
+  HuntressKill _ -> [Night]
+  HarlotHideWith _ -> [Night]
+  HunterRevenge _ -> [Day, Night]
+  MentalistCompare _ _ -> [Night]
+  CupidArrow _ _ -> [Night]
+  ProphetVision _ -> [Night]
+  RevealerKill _ -> [Night]
+  MasonReveal -> [Day]
+  GunnerShoot _ -> [Day]
+  DoppelgangerChoose _ -> [Night]
+  TurncoatSwitch _ -> [Night]
+
+data Capability
+  = Allowed
+  | RoleCannot
+  | PlayerIsDead
+  | CannotBecause T.Text
+
+playerCan :: Player -> Action -> Capability
+playerCan player (Action target info) =
+  case view #status player of
+    Dead -> PlayerIsDead
+    Alive -> case (view #roleData player, info) of
+      (_, Accuse _) -> Allowed
+      (_, LynchVote _) -> Allowed
+      (WerewolfData, WerewolfKill _) -> Allowed
+      (ToughWolfData _, WerewolfKill _) -> Allowed
+      (SpellcasterData hasHexed, SpellcasterHex _) ->
+        if hasHexed
+          then CannotBecause "The spellcaster can only hex one person per game."
+          else Allowed
+      (DoctorData, DoctorRevive _) -> Allowed
+      (SeerData, SeerClairvoyance _) -> Allowed
+      (BodyguardData, BodyguardProtect _) -> Allowed
+      (GuardianAngelData lastProtected, GuardianAngelProtect protectee) ->
+        case lastProtected of
+          Nothing -> Allowed
+          Just lastProtectee ->
+            if lastProtectee /= protectee
+              then Allowed
+              else CannotBecause "The guardian angel cannot protect the same person twice in a row."
+      (HuntressData hasKilled, HuntressKill _) ->
+        if hasKilled
+          then CannotBecause "The huntress can only kill one person per game."
+          else Allowed
+      (HarlotData, HarlotHideWith _) -> Allowed
+      (HunterData, HunterRevenge _) -> Allowed
+      (MentalistData, MentalistCompare _ _) -> Allowed
+      (CupidData hasFired, CupidArrow _ _) ->
+        if hasFired
+          then CannotBecause "The cupid can only link two people once at the beginning of the game."
+          else Allowed
+      (ProphetData, ProphetVision _) -> Allowed
+      (RevealerData, RevealerKill _) -> Allowed
+      (MasonData, MasonReveal) -> Allowed
+      (GunnerData c, GunnerShoot _) ->
+        if c > 0 then Allowed
+                 else CannotBecause "The gunner is out of bullets."
+      (DoppelgangerData chosen, DoppelgangerChoose _) ->
+        case chosen of
+          Nothing -> Allowed
+          Just _ -> CannotBecause "The doppelganger can only doppelgang one person per game."
+      (TurncoatData _, TurncoatSwitch _) -> Allowed
+      _ -> RoleCannot
 
 newtype Round = Round [Event]
   deriving (Show, Eq)
 
 data Game = Game
   { currentPhase :: Phase
-  , gamePlayers :: [Player]
+  , players :: [Player]
   , rounds :: [Round]
   } deriving (Show, Eq)
 
-class (Monad m) => MonadMessage m where
-  sendMessage :: Message -> m ()
-
-type MonadWG m = (MonadState Game m, MonadRandom m, MonadMessage m)
-
-addEvent :: (MonadState Game m) => Event -> m ()
-addEvent e = case e of
-  NightEnd -> modify $ endNight . appendEvent
-  _ -> modify appendEvent
-  where
-    appendEvent :: Game -> Game
-    appendEvent g@Game{rounds} =
-      let rounds' = case rounds of
-              [] -> [Round [e]]
-              (Round events):rest -> (Round (e:events)):rest
-      in g{rounds = rounds'}
-
-    endNight :: Game -> Game
-    endNight g@Game{rounds} = g{rounds = (Round []):rounds}
-
--- | Only use this to send messages; it makes sure to log the message
--- in the event log.
-handleMessage :: (MonadState Game m, MonadMessage m) => Message -> m ()
-handleMessage msg = do
-  addEvent $ SendMessage msg
-  sendMessage msg
-
-pm :: (MonadState Game m, MonadMessage m) => PlayerName -> String -> m ()
-pm pn str = handleMessage $ PM pn str
-
-announce :: (MonadState Game m, MonadMessage m) => String -> m ()
-announce = handleMessage . Announce
-
-queryPlayers :: (MonadState Game m) => (Player -> Bool) -> m [Player]
-queryPlayers q = gets (filter q)
-
-isRoleActive :: (MonadState Game m) => Role -> m Bool
-isRoleActive role = (not . null) <$> queryPlayers (hasRole role)
-
-forAny :: (MonadState Game m) => Role -> (Player -> m ()) -> m ()
-forAny role f = queryPlayers (hasRole role) >>= mapM_ f
-
-nightStart :: MonadWG m => m ()
-nightStart = do
-  -- Tell any mystics how many werewolf players there are
-  forAny Mystic \player -> do
-    werewolfPlayers <- queryPlayers $ onTeam WerewolfTeam
-    let count = length werewolfPlayers
-    pm (name player) $ "There are " ++ show count ++ " players on the werewolf team."
-
-dayStart :: MonadWG m => m ()
-dayStart = pure ()
-
-process :: (MonadWG m) => Event -> m ()
-process = \case
-  DayEnd -> nightStart
-  NightEnd -> dayStart
+makeFieldLabelsWith noPrefixFieldLabels ''Game

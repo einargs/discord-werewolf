@@ -19,7 +19,7 @@
 # resolver: ./custom-snapshot.yaml
 # resolver: https://example.com/snapshots/2018-01-01.yaml
 # TODO: update resolveer
-resolver: lts-15.4
+resolver: lts-15.12
 
 # Use nix
 nix:
@@ -47,6 +47,10 @@ nix:
 extra-deps:
 - discord-haskell-1.5.2
 - emoji-0.1.0.2@sha256:d995572a5c7dcd28f98eb15c6e387a7b3bda1ac2477ab0d9dba8580d5d7b161f,1273
+- optics-0.3@sha256:5f62fca47b01ce065bb999724b8cdd45e747537892ee00faeac4b4b20d821aee,6494
+- optics-th-0.3@sha256:b4746b3d142feb2dc9dfcf76b49a11fd04321aa0ee9c1bcd297c5e8dc393803c,1965
+- optics-core-0.3@sha256:0464583aaef715f8e48b8c9ce3fab9866345de93e740dae32d5c5e9a57097bf7,4532
+- optics-extra-0.3@sha256:b1b9917596a4305069aa95eaf3083afe88c6db3c84ed6f52e926c82d0c56eea9,3382
 
 # Override default flag values for local packages and extra-deps
 # flags: {}
