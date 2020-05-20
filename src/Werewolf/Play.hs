@@ -1,4 +1,6 @@
-module Werewolf.Play where
+module Werewolf.Play
+  (
+  ) where
 
 import Control.Monad.Random
 import Control.Monad.State.Class
@@ -8,8 +10,11 @@ import Optics.State.Operators ((%=), (.=))
 
 import qualified Data.Text as T
 
+import Util.Text (tshow)
+
 import Werewolf.Game
 import Werewolf.Player
+import Werewolf.Session (ActionRequest(..), ActionResponse(..), MonadCom(..))
 
 -- | Although mechanically it is possible for a game to
 -- not contain a player with a given player name, part
@@ -28,11 +33,6 @@ selectPlayer pname = #players % lens g s where
   s (p:ps) p' = if view #name p == pname
     then p':ps
     else p:s ps p'
-
-class (Monad m) => MonadCom m where
-  sendMessage :: Message -> m ()
-  -- | Returns whether the player needed to be prompted and the result.
-  sendRequest :: PlayerName -> T.Text -> (ActionInfo -> Bool) -> m (Bool, ActionInfo)
 
 type MonadWG m = (MonadState Game m, MonadRandom m, MonadCom m)
 
@@ -63,15 +63,20 @@ handleMessage msg = do
 -- be handled with the usual process.
 requestAction :: (MonadState Game m, MonadCom m) => PlayerName -> T.Text -> (ActionInfo -> Bool) -> m Action
 requestAction name txt p = do
-  (neededPrompt, info) <- sendRequest name txt p
-  when neededPrompt $ do
+  ActionResponse{wasPromptRequired, actionScope, actionTaken}
+    <- sendRequest $ ActionRequest name txt p
+  when wasPromptRequired $
     addEvent $ SendMessage $ PM name txt
-  pure $ Action name info
+  pure $ Action
+    { playerName = name
+    , scope = actionScope
+    , actionInfo = actionTaken
+    }
 
-pm :: MonadWG m => PlayerName -> T.Text -> m ()
+pm :: (MonadState Game m, MonadCom m) => PlayerName -> T.Text -> m ()
 pm pn t = handleMessage $ PM pn t
 
-announce :: MonadWG m => T.Text -> m ()
+announce :: (MonadState Game m, MonadCom m) => T.Text -> m ()
 announce = handleMessage . Announce
 
 queryPlayers :: (MonadState Game m) => (Player -> Bool) -> m [Player]
@@ -82,6 +87,7 @@ killPlayer name = do
   currentStatus <- gets $ view statusLens
   when (currentStatus == Dead) $ error "Attempting to kill an already dead player"
   statusLens .= Dead
+  addEvent $ PlayerDeath name
   where statusLens = selectPlayer name % #status
 
 isRoleActive :: (MonadState Game m) => Role -> m Bool
@@ -100,7 +106,7 @@ nightStart = do
   -- Tell any mystics how many werewolf players there are
   forAny Mystic $ \player -> do
     werewolfPlayers <- queryPlayers $ onTeam WerewolfTeam
-    let countText = T.pack $ show $ length werewolfPlayers
+    let countText = tshow $ length werewolfPlayers
     pm (name player) $ T.concat ["There are ", countText, " players on the werewolf team."]
 
 dayStart :: MonadWG m => m ()
@@ -108,6 +114,29 @@ dayStart = do
   -- Log that the night has ended
   addEvent NightEnd
 
+-- | Get the scope of an action.
+actionInfoScope :: ActionInfo -> Scope
+actionInfoScope = \case
+  Accuse _ -> Public
+  LynchVote _ -> Private
+  WerewolfKill _ -> Private
+  SpellcasterHex _ -> Private
+  DoctorRevive _ -> Private
+  SeerClairvoyance _ -> Private
+  BodyguardProtect _ -> Private
+  GuardianAngelProtect _ -> Private
+  HuntressKill _ -> Private
+  HarlotHideWith _ -> Private
+  HunterRevenge _ -> Public
+  MentalistCompare _ _ -> Private
+  CupidArrow _ _ -> Private
+  ProphetVision _ -> Private
+  RevealerKill _ -> Private
+  MasonReveal -> Public
+  GunnerShoot _ -> Public
+  DoppelgangerChoose _ -> Private
+  TurncoatSwitch _ -> Private
+
 process :: (MonadWG m) => Action -> m ()
-process (Action pname info) = case info of
+process Action{playerName, actionInfo, scope} = case actionInfo of
   _ -> pure ()

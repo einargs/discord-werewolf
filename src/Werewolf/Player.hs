@@ -2,11 +2,13 @@ module Werewolf.Player
   ( playerTeams
   , actualTeam
   , seerTeam
-  , docTeamsForRole
+  , teamsForRole
   , playerRole
   , hasRole
   , onTeam
   , allRoles
+  , initialDataFor
+  , roleGroup
   , Player(..)
   , PlayerName(..)
   , Role(..)
@@ -14,7 +16,8 @@ module Werewolf.Player
   , Modifier(..)
   , Team(..)
   , PlayerStatus(..)
-  , LycanStatus
+  , LycanStatus(..)
+  , RoleGroup(..)
   ) where
 
 import Discord.Types (UserId)
@@ -171,8 +174,8 @@ data Team
 -- used for help commands; use teamsForRoleData
 -- to actually get the correct team based on
 -- role data.
-docTeamsForRole :: Role -> (Team, Team)
-docTeamsForRole = \case
+teamsForRole :: Role -> (Team, Team)
+teamsForRole = \case
   Werewolf -> (w, w)
   Werecub -> (w, w)
   Werekitten -> (w, v)
@@ -248,6 +251,44 @@ teamsForRoleData = \case
     w = WerewolfTeam
     v = VillagerTeam
     n = NeutralTeam
+
+-- | A data type listing the different groups
+-- that a role can be in. In each game, there
+-- can only be one role from a given group.
+data RoleGroup
+  = Assassins
+  | Guardians
+  | Chaos
+  | Information
+
+rolesInGroup :: RoleGroup -> [Role]
+rolesInGroup = \case
+  Assassins -> [Huntress, Hunter, Gunner, Revealer]
+  Guardians -> [GuardianAngel, Bodyguard, Doctor]
+  Chaos -> [Cupid, MadScientist]
+  Information -> [Seer, Mystic, Prophet, Mentalist]
+
+roleGroup :: Role -> Maybe RoleGroup
+roleGroup = \case
+  -- Assassins
+  Huntress -> Just Assassins
+  Hunter -> Just Assassins
+  Gunner -> Just Assassins
+  Revealer -> Just Assassins
+  -- Guardians
+  GuardianAngel -> Just Guardians
+  Bodyguard -> Just Guardians
+  Doctor -> Just Guardians
+  -- Chaos
+  Cupid -> Just Chaos
+  MadScientist -> Just Chaos
+  -- Information
+  Seer -> Just Information
+  Mystic -> Just Information
+  Prophet -> Just Information
+  Mentalist -> Just Information
+  -- Any others have no role group
+  _ -> Nothing
 
 newtype PlayerName = PlayerName UserId
   deriving (Show, Eq, Ord)

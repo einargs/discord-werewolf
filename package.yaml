@@ -56,6 +56,9 @@ default-extensions:
 - MultiParamTypeClasses
 - DataKinds
 - GeneralizedNewtypeDeriving
+- RecordWildCards
+- DeriveFunctor
+- StandaloneDeriving
   #- KindSignatures
   #- PolyKinds
   #- TypeApplications

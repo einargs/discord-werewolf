@@ -4,11 +4,13 @@ module Werewolf.Game
   , Event(..)
   , Action(..)
   , ActionInfo(..)
+  , Scope(..)
   , Game(..)
   , Phase(..)
   , Round(..)
   , validPhases
   , playerCan
+  , initGame
   ) where
 
 import qualified Data.Text as T
@@ -39,7 +41,18 @@ data Event
   | Victory Victory
   deriving (Show, Eq)
 
-data Action = Action PlayerName ActionInfo
+-- | Whether a command was sent privately, in DMs,
+-- or publically in the main chat.
+data Scope
+  = Public
+  | Private
+  deriving (Show, Eq, Ord)
+
+data Action = Action
+  { playerName :: PlayerName
+  , scope :: Scope
+  , actionInfo :: ActionInfo
+  }
   deriving (Show, Eq)
 
 -- | These correspond directly to commands that players will
@@ -66,33 +79,12 @@ data ActionInfo
   | TurncoatSwitch Team
   deriving (Show, Eq)
 
-{-data ActionTag
-  = AccuseTag
-  | LynchVoteTag
-  | WerewolfKillTag
-  | SpellcasterHexTag
-  | DoctorReviveTag
-  | SeerClairvoyanceTag
-  | BodyguardProtectTag
-  | GuardianAngelProtectTag
-  | HuntressKillTag
-  | HarlotHideWithTag
-  | HunterRevengeTag
-  | MentalistCompareTag
-  | CupidArrowTag
-  | ProphetVisionTag
-  | RevealerKillTag
-  | MasonRevealTag
-  | GunnerShootTag
-  | DoppelgangerChooseTag
-  | TurncoatSwitchTag-}
-
 data Phase = Day | Night
   deriving (Show, Eq)
 
 -- | Gives the phases that an action can be taken during.
 validPhases :: Action -> [Phase]
-validPhases (Action _ info) = case info of
+validPhases Action{actionInfo} = case actionInfo of
   Accuse _ -> [Day]
   LynchVote _ -> [Day]
   WerewolfKill _ -> [Day]
@@ -113,21 +105,29 @@ validPhases (Action _ info) = case info of
   DoppelgangerChoose _ -> [Night]
   TurncoatSwitch _ -> [Night]
 
+-- | Whether the player can or cannot perform an action
+-- and why.
 data Capability
   = Allowed
   | RoleCannot
   | PlayerIsDead
+  | PhaseMustBe Phase
   | CannotBecause T.Text
 
-playerCan :: Player -> Action -> Capability
-playerCan player (Action target info) =
+-- | Determines whether the player can or cannot take
+-- an action.
+playerCan
+  :: Phase -- ^ the current phase (night or day)
+  -> Player -- ^ the player taking the action
+  -> Action -- ^ the action the player took
+  -> Capability
+playerCan currentPhase player Action{scope,actionInfo=info} =
   case view #status player of
     Dead -> PlayerIsDead
     Alive -> case (view #roleData player, info) of
       (_, Accuse _) -> Allowed
       (_, LynchVote _) -> Allowed
       (WerewolfData, WerewolfKill _) -> Allowed
-      (ToughWolfData _, WerewolfKill _) -> Allowed
       (SpellcasterData hasHexed, SpellcasterHex _) ->
         if hasHexed
           then CannotBecause "The spellcaster can only hex one person per game."
@@ -165,6 +165,10 @@ playerCan player (Action target info) =
           Just _ -> CannotBecause "The doppelganger can only doppelgang one person per game."
       (TurncoatData _, TurncoatSwitch _) -> Allowed
       _ -> RoleCannot
+  where
+    requirePhase phase
+      | currentPhase == phase = Allowed
+      | otherwise = PhaseMustBe phase
 
 newtype Round = Round [Event]
   deriving (Show, Eq)
@@ -174,5 +178,14 @@ data Game = Game
   , players :: [Player]
   , rounds :: [Round]
   } deriving (Show, Eq)
+
+-- | Initialize a game in the first night with the passed
+-- list of players.
+initGame :: [Player] -> Game
+initGame players = Game
+  { currentPhase = Night
+  , players = players
+  , rounds = [Round []]
+  }
 
 makeFieldLabelsWith noPrefixFieldLabels ''Game
