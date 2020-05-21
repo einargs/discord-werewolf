@@ -76,7 +76,7 @@ data RoleData
   | GuardianAngelData (Maybe PlayerName) -- ^ last guarded
   | HuntressData Bool -- ^ Has the huntress killed someone
   | HarlotData
-  | HunterData
+  | HunterData Bool -- ^ Has taken revenge
   | MentalistData
   | MadScientistData
   | CupidData Bool -- ^ Has the cupid linked two people
@@ -89,7 +89,9 @@ data RoleData
   | PrinceData
   | DoppelgangerData (Maybe PlayerName) -- ^ doppelganger target
   | MonsterData
-  | TurncoatData Team
+  | TurncoatData
+    Team -- ^ The team the turncoat is on; starts as neutral.
+    (Maybe Int) -- ^ The last round the turncoat switched teams on.
   | VillagerData
   deriving (Show, Eq)
 
@@ -108,7 +110,7 @@ initialDataFor = \case
   GuardianAngel -> GuardianAngelData Nothing
   Huntress -> HuntressData False
   Harlot -> HarlotData
-  Hunter -> HunterData
+  Hunter -> HunterData False
   Mentalist -> MentalistData
   MadScientist -> MadScientistData
   Cupid -> CupidData False
@@ -121,7 +123,7 @@ initialDataFor = \case
   Prince -> PrinceData
   Doppelganger -> DoppelgangerData Nothing
   Monster -> MonsterData
-  Turncoat -> TurncoatData NeutralTeam
+  Turncoat -> TurncoatData NeutralTeam Nothing
   Villager -> VillagerData
 
 roleForData :: RoleData -> Role
@@ -139,7 +141,7 @@ roleForData = \case
   GuardianAngelData _ -> GuardianAngel
   HuntressData _ -> Huntress
   HarlotData -> Harlot
-  HunterData -> Hunter
+  HunterData _ -> Hunter
   MentalistData -> Mentalist
   MadScientistData -> MadScientist
   CupidData _ -> Cupid
@@ -152,7 +154,7 @@ roleForData = \case
   PrinceData -> Prince
   DoppelgangerData _ -> Doppelganger
   MonsterData -> Monster
-  TurncoatData _ -> Turncoat
+  TurncoatData _ _ -> Turncoat
   VillagerData -> Villager
 
 data Modifier
@@ -231,7 +233,7 @@ teamsForRoleData = \case
   GuardianAngelData _ -> (v, v)
   HuntressData _ -> (v, v)
   HarlotData -> (v, v)
-  HunterData -> (v, v)
+  HunterData _ -> (v, v)
   MentalistData -> (v, v)
   MadScientistData -> (v, w)
   CupidData _ -> (v, v)
@@ -245,7 +247,7 @@ teamsForRoleData = \case
   PrinceData -> (v, v)
   DoppelgangerData _ -> (n, v)
   MonsterData -> (n, w)
-  TurncoatData _ -> (n, n)
+  TurncoatData _ _ -> (n, n)
   VillagerData -> (v, v)
   where
     w = WerewolfTeam

@@ -11,6 +11,7 @@ module Werewolf.Game
   , validPhases
   , playerCan
   , initGame
+  , roundCount
   ) where
 
 import qualified Data.Text as T
@@ -105,70 +106,172 @@ validPhases Action{actionInfo} = case actionInfo of
   DoppelgangerChoose _ -> [Night]
   TurncoatSwitch _ -> [Night]
 
+-- | Reasons why a player wouldn't be able to perform
+-- an action.
+data CapabilityError
+  = RoleCannot
+  | StatusMustBe PlayerStatus
+  | PhaseMustBe Phase
+  | ScopeMustBe Scope
+  | OtherPlayerStatusMustBe PlayerName PlayerStatus
+  | OtherReason T.Text
+
 -- | Whether the player can or cannot perform an action
 -- and why.
 data Capability
   = Allowed
-  | RoleCannot
-  | PlayerIsDead
-  | PhaseMustBe Phase
-  | CannotBecause T.Text
+  | CannotBecause CapabilityError
+
+instance Semigroup Capability where
+  Allowed <> Allowed = Allowed
+  Allowed <> e = e
+  e <> _ = e
+
+instance Monoid Capability where
+  mempty = Allowed
 
 -- | Determines whether the player can or cannot take
 -- an action.
 playerCan
-  :: Phase -- ^ the current phase (night or day)
-  -> Player -- ^ the player taking the action
-  -> Action -- ^ the action the player took
+  :: Phase -- ^ The current phase (night or day)
+  -> Int -- ^ The current round number
+  -> (PlayerName -> PlayerStatus)
+  -- ^ A function that gets the status of any player in the game.
+  -> Player -- ^ The player taking the action
+  -> Action -- ^ The action the player took
   -> Capability
-playerCan currentPhase player Action{scope,actionInfo=info} =
-  case view #status player of
-    Dead -> PlayerIsDead
-    Alive -> case (view #roleData player, info) of
-      (_, Accuse _) -> Allowed
-      (_, LynchVote _) -> Allowed
-      (WerewolfData, WerewolfKill _) -> Allowed
-      (SpellcasterData hasHexed, SpellcasterHex _) ->
-        if hasHexed
-          then CannotBecause "The spellcaster can only hex one person per game."
-          else Allowed
-      (DoctorData, DoctorRevive _) -> Allowed
-      (SeerData, SeerClairvoyance _) -> Allowed
-      (BodyguardData, BodyguardProtect _) -> Allowed
-      (GuardianAngelData lastProtected, GuardianAngelProtect protectee) ->
-        case lastProtected of
-          Nothing -> Allowed
-          Just lastProtectee ->
-            if lastProtectee /= protectee
-              then Allowed
-              else CannotBecause "The guardian angel cannot protect the same person twice in a row."
-      (HuntressData hasKilled, HuntressKill _) ->
-        if hasKilled
-          then CannotBecause "The huntress can only kill one person per game."
-          else Allowed
-      (HarlotData, HarlotHideWith _) -> Allowed
-      (HunterData, HunterRevenge _) -> Allowed
-      (MentalistData, MentalistCompare _ _) -> Allowed
-      (CupidData hasFired, CupidArrow _ _) ->
-        if hasFired
-          then CannotBecause "The cupid can only link two people once at the beginning of the game."
-          else Allowed
-      (ProphetData, ProphetVision _) -> Allowed
-      (RevealerData, RevealerKill _) -> Allowed
-      (MasonData, MasonReveal) -> Allowed
-      (GunnerData c, GunnerShoot _) ->
-        if c > 0 then Allowed
-                 else CannotBecause "The gunner is out of bullets."
-      (DoppelgangerData chosen, DoppelgangerChoose _) ->
-        case chosen of
-          Nothing -> Allowed
-          Just _ -> CannotBecause "The doppelganger can only doppelgang one person per game."
-      (TurncoatData _, TurncoatSwitch _) -> Allowed
-      _ -> RoleCannot
+playerCan
+  currentPhase
+  roundNumber
+  otherPlayerStatus
+  player
+  Action{scope,actionInfo=info} =
+    case (view #roleData player, info) of
+      (_, Accuse target) -> mconcat
+        [ requireStd Day Public
+        , requireLivePlayer target
+        , requireNotSelf target "You cannot accuse yourself."
+        ]
+      (_, LynchVote _) -> requireStd Day Private
+      (WerewolfData, WerewolfKill target) -> requireStd Night Private
+        <> requireLivePlayer target
+        <> requireNotSelf target "The werewolf cannot kill themselves."
+      (SpellcasterData hasHexed, SpellcasterHex _) -> mconcat
+        [ requireStd Night Private
+        , require (not hasHexed) "The spellcaster can only hex one person per game."
+        ]
+      (DoctorData, DoctorRevive _) -> requireStd Night Private
+      (SeerData, SeerClairvoyance _) -> requireStd Night Private
+      (BodyguardData, BodyguardProtect _) -> requireStd Night Private
+      (GuardianAngelData lastProtected, GuardianAngelProtect protectee) -> mconcat
+        [ requireStd Night Private
+        , case lastProtected of
+            Nothing -> Allowed
+            Just lastProtectee ->
+              require (lastProtectee /= protectee)
+                "The guardian angel cannot protect the same person twice in a row."
+        ]
+      (HuntressData hasKilled, HuntressKill target) -> mconcat
+        [ requireStd Night Private
+        , requireLivePlayer target
+        , requireNotSelf target "The huntress cannot kill themselves."
+        , require (not hasKilled) "The huntress can only kill one person per game."
+        ]
+      (HarlotData, HarlotHideWith _) -> requireStd Night Private
+      (HunterData hasTakenRevenge, HunterRevenge target) -> mconcat
+        [ requireStatus Dead
+        , requireScope Public
+        -- This has to go first, because the hunter will always be dead
+        -- by this point; if it came after the live target check it
+        -- would never occur.
+        , requireNotSelf target "The hunter cannot take revenge against themselves"
+        , requireLivePlayer target
+        , require (not hasTakenRevenge)
+          "The hunter can only take revenge against one person after dying."
+        ]
+      (MentalistData, MentalistCompare n1 n2) -> mconcat
+        [ requireStd Night Private
+        , requireLivePlayer n1
+        , requireLivePlayer n2
+        , require (n1 /= n2) "The seer cannot compare the same person to themselves."
+        , let pn = view #name player
+              cond = pn /= n1 && pn /= n2
+              in require cond "The mentalist cannot compare themselves to anyone else."
+        ]
+      (CupidData hasFired, CupidArrow n1 n2) -> mconcat
+        [ requireStd Night Private
+        , requireLivePlayer n1
+        , requireLivePlayer n2
+        , requireNotSelf n1 "The cupid cannot link themselves."
+        , requireNotSelf n2 "The cupid cannot link themselves."
+        , require (n1 /= n2) "The cupid cannot link the same person."
+        , require (not hasFired)
+          "The cupid can only link two people once at the beginning of the game."
+        ]
+      (ProphetData, ProphetVision _) -> requireStd Night Private
+      (RevealerData, RevealerKill target) -> requireStd Night Private
+        <> requireLivePlayer target
+        <> requireNotSelf target "The revealer cannot target themselves."
+      (MasonData, MasonReveal) -> requireStd Day Public
+      (GunnerData c, GunnerShoot target) -> mconcat
+        [ requireAlive
+        , requireScope $ case currentPhase of
+            Day -> Public
+            Night -> Private
+        , requireLivePlayer target
+        , requireNotSelf target "The gunner cannot shoot themselves."
+        , require (c > 0) "The gunner is out of bullets."
+        ]
+      (DoppelgangerData chosen, DoppelgangerChoose _) -> mconcat
+        [ requireStd Night Private
+        , case chosen of
+            Nothing -> Allowed
+            Just _ -> CannotBecause $ OtherReason
+              "The doppelganger can only doppelgang one person per game."
+        ]
+      (TurncoatData _ lastSwitched, TurncoatSwitch _) -> mconcat
+        [ requireStd Night Private
+        , case lastSwitched of
+            Nothing -> Allowed
+            Just n -> require (n < roundNumber - 1)
+              "The turncoat cannot switch sides twice in a row."
+        ]
+      _ -> CannotBecause RoleCannot
   where
+    -- | A default set of requirements. Requires that the scope and
+    -- phase be the passed arguments, as well as that the player be
+    -- alive.
+    requireStd p s = requireAlive <> requirePhase p <> requireScope s
+    -- | Require that the current phase be `phase`.
     requirePhase phase
       | currentPhase == phase = Allowed
-      | otherwise = PhaseMustBe phase
+      | otherwise = CannotBecause $ PhaseMustBe phase
+    -- | Require that the boolean argument be true, or
+    -- fail with a textual explanation.
+    require True _ = Allowed
+    require False reason = CannotBecause $ OtherReason reason
+    -- | Require that the current scope be `scope`.
+    requireScope s
+      | s == scope = Allowed
+      | otherwise = CannotBecause $ ScopeMustBe s
+    -- | Require that the player be alive.
+    requireAlive = requireStatus Alive
+    -- | Require that the player's current status be `status`.
+    requireStatus status
+      | status == view #status player = Allowed
+      | otherwise = CannotBecause $ StatusMustBe status
+    -- | Require that the passed player name not be the same as the player
+    -- taking the action.
+    requireNotSelf name reason
+      | name /= view #name player = Allowed
+      | otherwise = CannotBecause $ OtherReason reason
+    -- | Utility for `requirePlayerStatus` that just requires the other
+    -- player to be alive.
+    requireLivePlayer name = requirePlayerStatus name Alive
+    -- | Require that the status of the other player be `status`.
+    requirePlayerStatus name status
+      | otherPlayerStatus name == status = Allowed
+      | otherwise = CannotBecause $ OtherPlayerStatusMustBe name status
 
 newtype Round = Round [Event]
   deriving (Show, Eq)
@@ -178,6 +281,11 @@ data Game = Game
   , players :: [Player]
   , rounds :: [Round]
   } deriving (Show, Eq)
+makeFieldLabelsWith noPrefixFieldLabels ''Game
+
+-- | Get the number of the current round.
+roundCount :: Game -> Int
+roundCount Game{rounds} = length rounds
 
 -- | Initialize a game in the first night with the passed
 -- list of players.
@@ -187,5 +295,3 @@ initGame players = Game
   , players = players
   , rounds = [Round []]
   }
-
-makeFieldLabelsWith noPrefixFieldLabels ''Game
