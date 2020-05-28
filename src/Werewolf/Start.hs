@@ -7,6 +7,7 @@ import Optics.TH (makeFieldLabelsWith, noPrefixFieldLabels)
 import Optics ((%~), ix, (&))
 import Control.Monad.Random
 import System.Random.Shuffle (shuffleM)
+import Control.Exception (assert)
 
 import Werewolf.Player
 import Werewolf.Game (Game(..), initGame)
@@ -28,24 +29,30 @@ randomRole = toEnum <$> getRandomR (mini, maxi)
 -- | Generate a random role that satisfies the predicates
 -- passed in.
 generateRole :: MonadRandom m => [(Role -> Bool)] -> m Role
-generateRole ps = do
-  r <- randomRole
-  if p r
-    then pure r
-    else generateRole p
-  where
-    -- Uses the reader monad to collapse all of the predicates
-    -- into a single predicate that requires all of them to be
-    -- true.
-    p = and <$> sequence ps
+generateRole ps = go where
+  go = do
+    r <- randomRole
+    if p r
+      then pure r
+      else go
+  -- Uses the reader monad to collapse all of the predicates
+  -- into a single predicate that requires all of them to be
+  -- true.
+  p = and <$> sequence ps
 
 -- | Check if a role has the same group as any of the roles
 -- passed in.
+--
+-- Note that you can still have a duplicate of a grouped role
+-- in a game; it's just that you can't have multiple roles
+-- from the same group in the same game. This means that,
+-- for example, a seer and a mystic cannot exist in the same
+-- game, but two seers can.
 avoidsOverlap :: [Role] -> Role -> Bool
 avoidsOverlap roles r = case roleGroup r of
   Nothing -> True
   Just g -> g `elem` groups
-    where groups = mapMaybe roleGroup roles
+    where groups = mapMaybe roleGroup (filter (/=r) roles)
 
 -- | is this a role that should count towards the werewolf
 -- team's player count (during initialization only).
@@ -68,11 +75,11 @@ generateWerewolfRoles GameConfig{} n = assert (n > 0) $ do
     gen = generateRole [(Werewolf/=), werewolfRole]
 
 -- | Generate `n` villager team roles.
-generateVillagerRoles :: MonadRandom m => GameConfig -> Int -> [Role]
-generateVillagerRoles GameConfig{monsterChance, masonChance} n =
+generateVillagerRoles :: forall m. MonadRandom m => GameConfig -> Int -> m [Role]
+generateVillagerRoles GameConfig{monsterChance, masonChance, masonCount} n =
   assert (n > 0) $ do
     monsterPrefix <- includeIf monsterChance [Monster]
-    masonsPrefix <- includeIf masonsChance $ replicate masonsCount Mason
+    masonsPrefix <- includeIf masonChance $ replicate masonCount Mason
     -- We avoid decrementing the `n` and instead just
     -- perform a `take n` on the resulting list in order
     -- to avoid having to worry about `n` becoming negative
@@ -82,12 +89,12 @@ generateVillagerRoles GameConfig{monsterChance, masonChance} n =
   where
     -- | Helper function for including a certain set of roles
     -- based on a percentage chance.
-    includeIf :: MonadRandom m => Double -> [Role] -> [Role]
+    includeIf :: Double -> [Role] -> m [Role]
     includeIf p rs = percentage p >>= \case
       True -> rs
       False -> []
     -- | The actual generator used by `genRest`.
-    gen :: MonadRandom m => [Role] -> m [Role]
+    gen :: [Role] -> m [Role]
     gen rs = generateRole
       [ (Mason/=) -- we generate masons through a separate method
       , (Monster/=) -- the same goes for monsters
@@ -95,7 +102,7 @@ generateVillagerRoles GameConfig{monsterChance, masonChance} n =
       , avoidsOverlap rs
       ]
     -- | A generator used to generate `n` villagers.
-    genRest :: MonadRandom m => Int -> [Role] -> m [Role]
+    genRest :: Int -> [Role] -> m [Role]
     genRest 0 rs = pure rs
     genRest n rs = do
       r <- gen rs

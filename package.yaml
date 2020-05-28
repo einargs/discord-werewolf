@@ -59,6 +59,8 @@ default-extensions:
 - RecordWildCards
 - DeriveFunctor
 - StandaloneDeriving
+- ScopedTypeVariables
+- TupleSections
   #- KindSignatures
   #- PolyKinds
   #- TypeApplications

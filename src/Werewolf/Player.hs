@@ -5,6 +5,7 @@ module Werewolf.Player
   , teamsForRole
   , playerRole
   , hasRole
+  , isAlive
   , onTeam
   , allRoles
   , initialDataFor
@@ -17,6 +18,7 @@ module Werewolf.Player
   , Team(..)
   , PlayerStatus(..)
   , LycanStatus(..)
+  , CupidStatus(..)
   , RoleGroup(..)
   ) where
 
@@ -62,6 +64,11 @@ data LycanStatus
   | Unturned
   deriving (Show, Eq)
 
+data CupidStatus
+  = NoLink
+  | Linked PlayerName PlayerName
+  deriving (Show, Eq)
+
 data RoleData
   = WerewolfData
   | WerecubData
@@ -79,7 +86,7 @@ data RoleData
   | HunterData Bool -- ^ Has taken revenge
   | MentalistData
   | MadScientistData
-  | CupidData Bool -- ^ Has the cupid linked two people
+  | CupidData CupidStatus -- ^ Has the cupid linked two people
   | MysticData
   | ProphetData
   | RevealerData
@@ -113,7 +120,7 @@ initialDataFor = \case
   Hunter -> HunterData False
   Mentalist -> MentalistData
   MadScientist -> MadScientistData
-  Cupid -> CupidData False
+  Cupid -> CupidData NoLink
   Mystic -> MysticData
   Prophet -> ProphetData
   Revealer -> RevealerData
@@ -328,8 +335,14 @@ actualTeam = fst . playerTeams
 seerTeam :: Player -> Team
 seerTeam = snd . playerTeams
 
+-- | Determines whether or not the player has the given role.
 hasRole :: Role -> Player -> Bool
 hasRole role Player{roleData} = role == roleForData roleData
 
+-- | Check if a player is alive or not.
+isAlive :: Player -> Bool
+isAlive = (Alive==) . status
+
+-- | Checks if the player's actual team is the passed team.
 onTeam :: Team -> Player -> Bool
 onTeam team = (team==) . actualTeam

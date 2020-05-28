@@ -1,0 +1,30 @@
+{-
+module Werewolf.Test where
+
+import Control.Monad.Coroutine
+import Control.Monad.Coroutine.SuspensionFunctors
+import Control.Monad.State
+import Control.Monad.Identity
+
+type Sus = Request String Int
+type Internal = StateT [Int] (Coroutine Sus Identity)
+
+newtype Session a = Session { unSession :: Internal a }
+  deriving (Functor, Applicative, Monad, MonadState [Int])
+
+newtype Suspension a = Suspension { unSuspension :: Coroutine Sus Identity a }
+
+startSession :: [Int] -> Session a -> ([Int], Suspension a)
+startSession st ses =
+  let (v, st') = flip runStateT st $ unSession ses
+      in (st', v)
+
+test :: Session Bool
+test = do
+  v <- lift $ request "hey"
+  modify (5:)
+  v1 <- lift $ request "lets go"
+  modify (6:)
+  return $ (v + v1) > 3
+
+-}

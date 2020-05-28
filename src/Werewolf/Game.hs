@@ -8,15 +8,19 @@ module Werewolf.Game
   , Game(..)
   , Phase(..)
   , Round(..)
+  , Capability(..)
+  , CapabilityError(..)
   , validPhases
   , playerCan
   , initGame
-  , roundCount
   ) where
 
 import qualified Data.Text as T
-import Optics (view)
+import Data.Sequence (Seq, (<|), (|>))
+import qualified Data.Sequence as Seq
+import Optics (view, (^.))
 import Optics.TH (makeFieldLabelsWith, noPrefixFieldLabels)
+import Data.Maybe (isNothing)
 
 import Werewolf.Player
 
@@ -35,8 +39,10 @@ data Message
 -- state of the game; rather they are used to passively log an occurance.
 data Event
   = PlayerAction Action
-  | DayEnd
-  | NightEnd
+  | NightStart
+  -- ^ Only the transition from day to night in the middle of a round matters;
+  -- the start of a day and end of a night can be infered from the round begining
+  -- and ending.
   | SendMessage Message
   | PlayerDeath PlayerName
   | Victory Victory
@@ -78,6 +84,7 @@ data ActionInfo
   | GunnerShoot PlayerName
   | DoppelgangerChoose PlayerName
   | TurncoatSwitch Team
+  | Pass -- ^ pass on performing an optional action at night.
   deriving (Show, Eq)
 
 data Phase = Day | Night
@@ -146,7 +153,7 @@ playerCan
   otherPlayerStatus
   player
   Action{scope,actionInfo=info} =
-    case (view #roleData player, info) of
+    case (player ^. #roleData, info) of
       (_, Accuse target) -> mconcat
         [ requireStd Day Public
         , requireLivePlayer target
@@ -194,18 +201,18 @@ playerCan
         , requireLivePlayer n1
         , requireLivePlayer n2
         , require (n1 /= n2) "The seer cannot compare the same person to themselves."
-        , let pn = view #name player
+        , let pn = player ^. #name
               cond = pn /= n1 && pn /= n2
               in require cond "The mentalist cannot compare themselves to anyone else."
         ]
-      (CupidData hasFired, CupidArrow n1 n2) -> mconcat
+      (CupidData linkStatus, CupidArrow n1 n2) -> mconcat
         [ requireStd Night Private
         , requireLivePlayer n1
         , requireLivePlayer n2
         , requireNotSelf n1 "The cupid cannot link themselves."
         , requireNotSelf n2 "The cupid cannot link themselves."
         , require (n1 /= n2) "The cupid cannot link the same person."
-        , require (not hasFired)
+        , require (linkStatus == NoLink)
           "The cupid can only link two people once at the beginning of the game."
         ]
       (ProphetData, ProphetVision _) -> requireStd Night Private
@@ -280,12 +287,9 @@ data Game = Game
   { currentPhase :: Phase
   , players :: [Player]
   , rounds :: [Round]
+  , actionBuffer :: Seq Action
   } deriving (Show, Eq)
 makeFieldLabelsWith noPrefixFieldLabels ''Game
-
--- | Get the number of the current round.
-roundCount :: Game -> Int
-roundCount Game{rounds} = length rounds
 
 -- | Initialize a game in the first night with the passed
 -- list of players.
@@ -294,4 +298,5 @@ initGame players = Game
   { currentPhase = Night
   , players = players
   , rounds = [Round []]
+  , actionBuffer = Seq.empty
   }

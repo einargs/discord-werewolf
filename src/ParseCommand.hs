@@ -105,6 +105,7 @@ werewolfAction = action "accuse" Accuse <*> playerName
   <|> action "shoot" GunnerShoot <*> arg playerName
   <|> action "doppelgang" DoppelgangerChoose <*> arg playerName
   <|> action "switch" TurncoatSwitch <*> arg team
+  <|> action "pass" Pass
   where action t a = string t $> a
 
 commandPhrase :: Parser Command

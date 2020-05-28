@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 70e47935e944c0235c83ceb6c17f367991ea5e157092b4a849a54911bc098af3
+-- hash: 6e13cb125d56c1b43969bdf530e3f1a90ef3fa272b72047b22a9e99acf03a106
 
 name:           werewolf
 version:        0.1.0.0
@@ -33,8 +33,11 @@ library
       Run
       Util.Optics
       Util.Text
+      Werewolf.Descriptions
       Werewolf.Game
-      Werewolf.Play
+      Werewolf.Play.Base
+      Werewolf.Play.Final
+      Werewolf.Play.Roles
       Werewolf.Player
       Werewolf.Session
       Werewolf.Start
@@ -42,7 +45,7 @@ library
       Paths_werewolf
   hs-source-dirs:
       src
-  default-extensions: BlockArguments LambdaCase MultiWayIf GADTs NamedFieldPuns ConstraintKinds OverloadedStrings OverloadedLabels DuplicateRecordFields TemplateHaskell FlexibleContexts FlexibleInstances UndecidableInstances MultiParamTypeClasses DataKinds GeneralizedNewtypeDeriving RecordWildCards DeriveFunctor StandaloneDeriving
+  default-extensions: BlockArguments LambdaCase MultiWayIf GADTs NamedFieldPuns ConstraintKinds OverloadedStrings OverloadedLabels DuplicateRecordFields TemplateHaskell FlexibleContexts FlexibleInstances UndecidableInstances MultiParamTypeClasses DataKinds GeneralizedNewtypeDeriving RecordWildCards DeriveFunctor StandaloneDeriving ScopedTypeVariables TupleSections
   build-depends:
       MonadRandom >=0.5.1.2
     , base >=4.7 && <5
@@ -65,7 +68,7 @@ executable werewolf-exe
       Paths_werewolf
   hs-source-dirs:
       app
-  default-extensions: BlockArguments LambdaCase MultiWayIf GADTs NamedFieldPuns ConstraintKinds OverloadedStrings OverloadedLabels DuplicateRecordFields TemplateHaskell FlexibleContexts FlexibleInstances UndecidableInstances MultiParamTypeClasses DataKinds GeneralizedNewtypeDeriving RecordWildCards DeriveFunctor StandaloneDeriving
+  default-extensions: BlockArguments LambdaCase MultiWayIf GADTs NamedFieldPuns ConstraintKinds OverloadedStrings OverloadedLabels DuplicateRecordFields TemplateHaskell FlexibleContexts FlexibleInstances UndecidableInstances MultiParamTypeClasses DataKinds GeneralizedNewtypeDeriving RecordWildCards DeriveFunctor StandaloneDeriving ScopedTypeVariables TupleSections
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       MonadRandom >=0.5.1.2
@@ -91,7 +94,7 @@ test-suite werewolf-test
       Paths_werewolf
   hs-source-dirs:
       test
-  default-extensions: BlockArguments LambdaCase MultiWayIf GADTs NamedFieldPuns ConstraintKinds OverloadedStrings OverloadedLabels DuplicateRecordFields TemplateHaskell FlexibleContexts FlexibleInstances UndecidableInstances MultiParamTypeClasses DataKinds GeneralizedNewtypeDeriving RecordWildCards DeriveFunctor StandaloneDeriving
+  default-extensions: BlockArguments LambdaCase MultiWayIf GADTs NamedFieldPuns ConstraintKinds OverloadedStrings OverloadedLabels DuplicateRecordFields TemplateHaskell FlexibleContexts FlexibleInstances UndecidableInstances MultiParamTypeClasses DataKinds GeneralizedNewtypeDeriving RecordWildCards DeriveFunctor StandaloneDeriving ScopedTypeVariables TupleSections
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       MonadRandom >=0.5.1.2
