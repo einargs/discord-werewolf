@@ -10,14 +10,15 @@ import Optics.State.Operators ((%=), (.=))
 import Werewolf.Play.Base
 import Werewolf.Game
 import Werewolf.Player
-import qualified Werewolf.Play.Roles as Roles
-import Werewolf.Play.Roles (killPlayer)
+import Werewolf.Play.Roles
 
 -- The first night.
 firstNight :: (MonadWG m) => m ()
 firstNight = do
   -- Transition to night; the event queue should empty right now.
   dayToNight
+  -- Perform the first night role actions
+  firstNightActions
   -- End the first setup round
   endRound
 
@@ -27,18 +28,17 @@ gameStart = do
   firstNight
 
 day :: MonadWG m => m ()
-day = pure ()
+day = do
+  removeHexed
 
 night :: MonadWG m => m ()
 night = do
   -- Transition from day to night
   dayToNight
-  -- Begin performing role actions
-  Roles.mystic
-  -- TODO: all the other roles
+  -- Perform role actions
+  nightlyActions
   -- At the end of the night, clear the action buffer.
   clearActionBuffer
-  
   endRound
 
 -- |

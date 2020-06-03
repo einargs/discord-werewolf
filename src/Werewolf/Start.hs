@@ -28,7 +28,7 @@ randomRole = toEnum <$> getRandomR (mini, maxi)
 
 -- | Generate a random role that satisfies the predicates
 -- passed in.
-generateRole :: MonadRandom m => [(Role -> Bool)] -> m Role
+generateRole :: MonadRandom m => [Role -> Bool] -> m Role
 generateRole ps = go where
   go = do
     r <- randomRole
@@ -90,11 +90,11 @@ generateVillagerRoles GameConfig{monsterChance, masonChance, masonCount} n =
     -- | Helper function for including a certain set of roles
     -- based on a percentage chance.
     includeIf :: Double -> [Role] -> m [Role]
-    includeIf p rs = percentage p >>= \case
+    includeIf p rs = flip fmap (percentage p) $ \case
       True -> rs
       False -> []
     -- | The actual generator used by `genRest`.
-    gen :: [Role] -> m [Role]
+    gen :: [Role] -> m Role
     gen rs = generateRole
       [ (Mason/=) -- we generate masons through a separate method
       , (Monster/=) -- the same goes for monsters
@@ -135,7 +135,7 @@ addMod m (ModRole ms r) = ModRole (m:ms) r
 -- | Generate roles for `n` players.
 generateRoles :: MonadRandom m => GameConfig -> Int -> m [ModRole]
 generateRoles config@GameConfig{drunkChance, werewolfTeamPercentage} count = do
-    let werewolfCount = max (floor $ werewolfTeamPercentage * count) 2
+    let werewolfCount = max (floor $ werewolfTeamPercentage * fromIntegral count) 2
         villagerCount = count - werewolfCount
     werewolfTeam <- convert $ generateWerewolfRoles config (werewolfCount-1)
     villagerTeam <- convert $ generateVillagerRoles config villagerCount

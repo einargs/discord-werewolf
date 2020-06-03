@@ -44,6 +44,7 @@ data Event
   -- the start of a day and end of a night can be infered from the round begining
   -- and ending.
   | SendMessage Message
+  | SuccessfullyLynched PlayerName
   | PlayerDeath PlayerName
   | Victory Victory
   deriving (Show, Eq)

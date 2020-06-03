@@ -6,6 +6,8 @@ module Werewolf.Player
   , playerRole
   , hasRole
   , isAlive
+  , hasModifier
+  , notHexed
   , onTeam
   , allRoles
   , initialDataFor
@@ -167,6 +169,7 @@ roleForData = \case
 data Modifier
   = Drunk
   | Minion
+  | Hexed
   deriving (Show, Eq)
 
 data Team
@@ -339,9 +342,18 @@ seerTeam = snd . playerTeams
 hasRole :: Role -> Player -> Bool
 hasRole role Player{roleData} = role == roleForData roleData
 
+-- | Check whether a player has a given modifier.
+hasModifier :: Modifier -> Player -> Bool
+hasModifier m Player{modifiers} = m `elem` modifiers
+
 -- | Check if a player is alive or not.
 isAlive :: Player -> Bool
 isAlive = (Alive==) . status
+
+-- | Convenience for checking that a player does not have the Hexed
+-- status modifier.
+notHexed :: Player -> Bool
+notHexed = not . hasModifier Hexed
 
 -- | Checks if the player's actual team is the passed team.
 onTeam :: Team -> Player -> Bool

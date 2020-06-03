@@ -6,13 +6,17 @@ module Werewolf.Play.Base
   , queryPlayers
   , killPlayerWithReaction
   , requestAction
+  , requestActionWithMessage
   , requestOptionalAction
+  , requestOptionalActionWithMessage
   , nextAction
   , pm
   , announce
   , isRoleActive
   , forAny
+  , forPlayers
   , currentRoundEvents
+  , searchCurrentRound
   , endRound
   , roundCount
   , dayToNight
@@ -143,21 +147,24 @@ validateAction action@Action{playerName} = do
 --
 -- Note that this does NOT log or process the resulting action; that should
 -- be handled with the usual process.
-requestAction
+requestActionBase
   :: forall m a. (MonadState Game m, MonadCom m)
   => PlayerName
-  -> T.Text
+  -> Maybe T.Text
   -> (Action -> Maybe a)
   -> m a
-requestAction name txt basePred = do
+requestActionBase name mbTxt basePred = do
   -- We check if a matching action is currently in the buffer.
   mbResult <- search'
   case mbResult of
     -- If the action is in the queue
     Just result -> pure result
     -- If it isn't, we prompt for it and start requesting more actions.
-    Nothing -> pm name txt >> getUntil
+    Nothing -> sendTxt >> getUntil
   where
+    sendTxt = case mbTxt of
+      Nothing -> pure ()
+      Just txt -> pm name txt
     -- | This searches for a matching and valid action
     -- in the buffer.
     search' :: m (Maybe a)
@@ -191,24 +198,68 @@ requestAction name txt basePred = do
           False -> cont
         Nothing -> cont
 
+-- | A version of requestActionBase that does not send a prompt message.
+--
+-- See `requestActionBase` for more information.
+requestAction
+  :: (MonadState Game m, MonadCom m)
+  => PlayerName
+  -> (Action -> Maybe a)
+  -> m a
+requestAction name = requestActionBase name Nothing
+
+-- | A version of requestActionBase that does not send a prompt message.
+--
+-- See `requestActionBase` for more information.
+requestActionWithMessage
+  :: (MonadState Game m, MonadCom m)
+  => PlayerName
+  -> T.Text
+  -> (Action -> Maybe a)
+  -> m a
+requestActionWithMessage name txt =
+  requestActionBase name (Just txt)
+
 -- | Request that a certain player take an optional action. An action
 -- requested with this can be skipped using the pass command; if that
 -- happens, this will return `Nothing`.
 --
--- See `requestAction` for more information.
-requestOptionalAction
+-- See `requestActionBase` for more information.
+requestOptionalActionBase
   :: forall a m. (MonadState Game m, MonadCom m)
   => PlayerName
-  -> T.Text
+  -> Maybe T.Text
   -> (Action -> Maybe a)
   -> m (Maybe a)
-requestOptionalAction name txt basePred =
-  requestAction name txt actionPred
+requestOptionalActionBase name mbTxt basePred =
+  requestActionBase name mbTxt actionPred
   where
     actionPred :: Action -> Maybe (Maybe a)
     actionPred act@Action{actionInfo} = case actionInfo of
           Pass -> Just Nothing
           _ -> Just <$> basePred act
+
+-- | A version of requestOptionalActionBase that does not send a prompt message.
+--
+-- See `requestOptionalActionBase` for more information.
+requestOptionalAction
+  :: (MonadState Game m, MonadCom m)
+  => PlayerName
+  -> (Action -> Maybe a)
+  -> m (Maybe a)
+requestOptionalAction name = requestOptionalActionBase name Nothing
+
+-- | A version of requestOptionalActionBase that sends a prompt.
+--
+-- See `requestOptionalActionBase` for more information.
+requestOptionalActionWithMessage
+  :: (MonadState Game m, MonadCom m)
+  => PlayerName
+  -> T.Text
+  -> (Action -> Maybe a)
+  -> m (Maybe a)
+requestOptionalActionWithMessage name txt =
+  requestOptionalActionBase name (Just txt)
 
 -- | Direct message/personal message a player with a message.
 pm :: (MonadState Game m, MonadCom m) => PlayerName -> T.Text -> m ()
@@ -283,13 +334,17 @@ declareVictory vic = do
 isRoleActive :: (MonadState Game m) => Role -> m Bool
 isRoleActive role = not . null <$> queryPlayers [hasRole role]
 
--- |
+-- | Get the number of the current round. Starts at 1.
 roundCount :: (MonadState Game m) => m Int
 roundCount = length <$> getv #rounds
 
+-- | For all players matching a predicate, perform an action.
+forPlayers :: (MonadState Game m) => [Player -> Bool] -> (Player -> m ()) -> m ()
+forPlayers preds f = queryPlayers preds >>= mapM_ f
+
 -- | Perform an action for any players with the given role.
 forAny :: (MonadState Game m) => Role -> (Player -> m ()) -> m ()
-forAny role f = queryPlayers [hasRole role] >>= mapM_ f
+forAny role = forPlayers [hasRole role]
 
 -- | Get the list of events for the current round.
 currentRoundEvents :: MonadState Game m => m [Event]
@@ -298,6 +353,17 @@ currentRoundEvents = do
   case rounds of
     [] -> error "A game should never have an empty rounds field."
     (Round events):_ -> pure events
+
+-- | 
+searchCurrentRound
+  :: MonadState Game m
+  => (Event -> Maybe a)
+  -> m (Maybe a)
+searchCurrentRound eventPred = do
+  events <- currentRoundEvents
+  let f e Nothing = eventPred e
+      f _ mb = mb
+  pure $ foldr f Nothing events
 
 -- | End the current round and start a new one.
 endRound :: (MonadState Game m, MonadCom m) => m ()
