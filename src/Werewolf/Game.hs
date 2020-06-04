@@ -10,7 +10,6 @@ module Werewolf.Game
   , Round(..)
   , Capability(..)
   , CapabilityError(..)
-  , validPhases
   , playerCan
   , initGame
   ) where
@@ -91,29 +90,6 @@ data ActionInfo
 data Phase = Day | Night
   deriving (Show, Eq)
 
--- | Gives the phases that an action can be taken during.
-validPhases :: Action -> [Phase]
-validPhases Action{actionInfo} = case actionInfo of
-  Accuse _ -> [Day]
-  LynchVote _ -> [Day]
-  WerewolfKill _ -> [Day]
-  SpellcasterHex _ -> [Night]
-  DoctorRevive _ -> [Night]
-  SeerClairvoyance _ -> [Night]
-  BodyguardProtect _ -> [Night]
-  GuardianAngelProtect _ -> [Night]
-  HuntressKill _ -> [Night]
-  HarlotHideWith _ -> [Night]
-  HunterRevenge _ -> [Day, Night]
-  MentalistCompare _ _ -> [Night]
-  CupidArrow _ _ -> [Night]
-  ProphetVision _ -> [Night]
-  RevealerKill _ -> [Night]
-  MasonReveal -> [Day]
-  GunnerShoot _ -> [Day]
-  DoppelgangerChoose _ -> [Night]
-  TurncoatSwitch _ -> [Night]
-
 -- | Reasons why a player wouldn't be able to perform
 -- an action.
 data CapabilityError
@@ -122,6 +98,7 @@ data CapabilityError
   | PhaseMustBe Phase
   | ScopeMustBe Scope
   | OtherPlayerStatusMustBe PlayerName PlayerStatus
+  | PassInvalid
   | OtherReason T.Text
 
 -- | Whether the player can or cannot perform an action
@@ -142,6 +119,7 @@ instance Monoid Capability where
 -- an action.
 playerCan
   :: Phase -- ^ The current phase (night or day)
+  -> Bool -- ^ Whether a pass would be acceptable in the current context
   -> Int -- ^ The current round number
   -> (PlayerName -> PlayerStatus)
   -- ^ A function that gets the status of any player in the game.
@@ -150,11 +128,13 @@ playerCan
   -> Capability
 playerCan
   currentPhase
+  isPassValid
   roundNumber
   otherPlayerStatus
   player
   Action{scope,actionInfo=info} =
     case (player ^. #roleData, info) of
+      (_, Pass) -> if isPassValid then Allowed else CannotBecause PassInvalid
       (_, Accuse target) -> mconcat
         [ requireStd Day Public
         , requireLivePlayer target
@@ -168,11 +148,26 @@ playerCan
         [ requireStd Night Private
         , require (not hasHexed) "The spellcaster can only hex one person per game."
         ]
-      (DoctorData, DoctorRevive _) -> requireStd Night Private
-      (SeerData, SeerClairvoyance _) -> requireStd Night Private
-      (BodyguardData, BodyguardProtect _) -> requireStd Night Private
+      (DoctorData hasRevivedSelf, DoctorRevive target) -> mconcat
+        [ requirePhase Night
+        , requireScope Private
+        , require (not hasRevivedSelf) "After reviving themselves the doctor can no longer revive anyone."
+        -- Require that whoever the target is be dead.
+        , if player ^. #name == target
+            then requireStatus Dead
+            else requirePlayerStatus target Dead
+        ]
+      (SeerData, SeerClairvoyance target) -> mconcat
+        [ requireStd Night Private
+        , requireLivePlayer target
+        ]
+      (BodyguardData, BodyguardProtect target) -> mconcat
+        [ requireStd Night Private
+        , requireLivePlayer target
+        ]
       (GuardianAngelData lastProtected, GuardianAngelProtect protectee) -> mconcat
         [ requireStd Night Private
+        , requireLivePlayer protectee
         , case lastProtected of
             Nothing -> Allowed
             Just lastProtectee ->
@@ -201,7 +196,7 @@ playerCan
         [ requireStd Night Private
         , requireLivePlayer n1
         , requireLivePlayer n2
-        , require (n1 /= n2) "The seer cannot compare the same person to themselves."
+        , require (n1 /= n2) "The seer cannot compare a person to themselves."
         , let pn = player ^. #name
               cond = pn /= n1 && pn /= n2
               in require cond "The mentalist cannot compare themselves to anyone else."

@@ -3,6 +3,7 @@ module Werewolf.Play.Base
   , MonadVictory
   , selectPlayer
   , MonadWG
+  , queryAllPlayers
   , queryPlayers
   , killPlayerWithReaction
   , requestAction
@@ -13,6 +14,7 @@ module Werewolf.Play.Base
   , pm
   , announce
   , isRoleActive
+  , forAllPlayers
   , forAny
   , forPlayers
   , currentRoundEvents
@@ -122,14 +124,15 @@ handleMessage msg = do
 -- was no error, and false if there was.
 --
 -- If there is an error, this will pm the player the error message.
-validateAction :: (MonadCom m, MonadState Game m) => Action -> m Bool
-validateAction action@Action{playerName} = do
+validateAction :: (MonadCom m, MonadState Game m) => Bool -> Action -> m Bool
+validateAction isPassValid action@Action{playerName} = do
   actionTaker <- getv $ selectPlayer playerName
   game@Game{currentPhase, rounds} <- get
   let roundNumber = length rounds
       getPlayerStatus name = game ^. selectPlayer name % #status
       capability = playerCan
         currentPhase
+        isPassValid
         roundNumber
         getPlayerStatus
         actionTaker
@@ -150,10 +153,11 @@ validateAction action@Action{playerName} = do
 requestActionBase
   :: forall m a. (MonadState Game m, MonadCom m)
   => PlayerName
+  -> Bool
   -> Maybe T.Text
   -> (Action -> Maybe a)
   -> m a
-requestActionBase name mbTxt basePred = do
+requestActionBase name isPassValid mbTxt basePred = do
   -- We check if a matching action is currently in the buffer.
   mbResult <- search'
   case mbResult of
@@ -169,7 +173,7 @@ requestActionBase name mbTxt basePred = do
     -- in the buffer.
     search' :: m (Maybe a)
     search' = searchAction searchPred >>= \case
-      Just (act, v) -> validateAction act >>= \case
+      Just (act, v) -> validateAction isPassValid act >>= \case
         True -> pure $ Just v
         False -> search'
       Nothing -> search'
@@ -193,7 +197,7 @@ requestActionBase name mbTxt basePred = do
       act <- getAction
       let cont = enqueueAction act >> getUntil
       case actionPred act of
-        Just v -> validateAction act >>= \case
+        Just v -> validateAction isPassValid act >>= \case
           True -> pure v
           False -> cont
         Nothing -> cont
@@ -206,7 +210,7 @@ requestAction
   => PlayerName
   -> (Action -> Maybe a)
   -> m a
-requestAction name = requestActionBase name Nothing
+requestAction name = requestActionBase name False Nothing
 
 -- | A version of requestActionBase that does not send a prompt message.
 --
@@ -218,7 +222,7 @@ requestActionWithMessage
   -> (Action -> Maybe a)
   -> m a
 requestActionWithMessage name txt =
-  requestActionBase name (Just txt)
+  requestActionBase name False (Just txt)
 
 -- | Request that a certain player take an optional action. An action
 -- requested with this can be skipped using the pass command; if that
@@ -232,7 +236,7 @@ requestOptionalActionBase
   -> (Action -> Maybe a)
   -> m (Maybe a)
 requestOptionalActionBase name mbTxt basePred =
-  requestActionBase name mbTxt actionPred
+  requestActionBase name True mbTxt actionPred
   where
     actionPred :: Action -> Maybe (Maybe a)
     actionPred act@Action{actionInfo} = case actionInfo of
@@ -269,10 +273,14 @@ pm pn t = handleMessage $ PM pn t
 announce :: (MonadState Game m, MonadCom m) => T.Text -> m ()
 announce = handleMessage . Announce
 
+-- | Get a list of all players that match the predicates (including dead players).
+queryAllPlayers :: (MonadState Game m) => [Player -> Bool] -> m [Player]
+queryAllPlayers qs = gets (filter q . view #players)
+  where q = and <$> sequence qs
+
 -- | Get a list of alive players satisfying the predicates.
 queryPlayers :: (MonadState Game m) => [Player -> Bool] -> m [Player]
-queryPlayers qs = gets (filter q . view #players)
-  where q = and <$> sequence (isAlive:qs)
+queryPlayers qs = queryAllPlayers (isAlive:qs)
 
 -- | Kill the specific player, call the reaction passed to the function,
 -- and then check the win conditions after the reaction.
@@ -308,7 +316,7 @@ checkWinConditions = determineIfVictory >>= \case
     isWerewolfVictory :: m Bool
     isWerewolfVictory = liftA2 (&&)
       (isRoleActive Werewolf)
-      ((<=1) . length <$> queryPlayers [onTeam VillagerTeam])
+      (([]==) <$> queryPlayers [onTeam VillagerTeam])
     -- | The villagers win
     isVillagerVictory :: m Bool
     isVillagerVictory = not <$> isRoleActive Werewolf
@@ -320,8 +328,11 @@ checkWinConditions = determineIfVictory >>= \case
         False -> pure Nothing
 
 -- | Declares that a team won the game.
+--
+-- Logs the victory, announces it, and exits with the victory.
 declareVictory :: (MonadState Game m, MonadCom m, MonadVictory m) => Victory -> m ()
 declareVictory vic = do
+  addEvent $ Victory vic
   let msg = case vic of
         WerewolfVictory -> "The werewolf team has won."
         VillagerVictory -> "The villager team has won."
@@ -338,7 +349,11 @@ isRoleActive role = not . null <$> queryPlayers [hasRole role]
 roundCount :: (MonadState Game m) => m Int
 roundCount = length <$> getv #rounds
 
--- | For all players matching a predicate, perform an action.
+-- | For all players matching the predicates (including dead ones), perform an action.
+forAllPlayers :: (MonadState Game m) => [Player -> Bool] -> (Player -> m ()) -> m ()
+forAllPlayers preds f = queryAllPlayers preds >>= mapM_ f
+
+-- | For all alive players matching a predicate, perform an action.
 forPlayers :: (MonadState Game m) => [Player -> Bool] -> (Player -> m ()) -> m ()
 forPlayers preds f = queryPlayers preds >>= mapM_ f
 
@@ -354,7 +369,7 @@ currentRoundEvents = do
     [] -> error "A game should never have an empty rounds field."
     (Round events):_ -> pure events
 
--- | 
+-- | Search through the events of the current round.
 searchCurrentRound
   :: MonadState Game m
   => (Event -> Maybe a)
@@ -368,7 +383,7 @@ searchCurrentRound eventPred = do
 -- | End the current round and start a new one.
 endRound :: (MonadState Game m, MonadCom m) => m ()
 endRound = do
-  #rounds %= ((Round []):)
+  #rounds %= (Round []:)
   announce "The round is over. Day has risen."
 
 -- | Transition from day to night.

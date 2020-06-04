@@ -1,12 +1,18 @@
-# TO-DO List
-- expand the declareVictory function to also list the players on the winning team
+# To-Do List
+- Expand the declareVictory function to also list the players on the winning team
 - After a game ends, print information about each player and their role
   and their roles.
-  
+  - At the start of the game, record the roles of the players so that at the end
+    of the game, e.g., the doppelganger is listed as the doppelganger and not whatever
+    role they become.
+  - Possibly also include information about 
+- Allow werewolf team members to be minions
+
 ## Roles
 - [ ] Werewolf
-    - [x] kill ability
-    - [ ] discover ability
+    - [x] Kill ability
+    - [x] Wins if kills all villagers
+    - [ ] Discover ability (`!w prowl`)
 - [x] Werecub
     - [x] If dies to lynching, werewolf can kill twice
     - [x] If werewolf dies, becomes werewolf
@@ -34,8 +40,8 @@
 - [ ] Guardian Angel
     - [ ] Can protect a player day+night
     - [ ] Cannot protect same player twice in a row
-- [ ] Huntress
-    - [ ] Can kill a player once
+- [x] Huntress
+    - [x] Can kill a player once
 - [ ] Harlot
     - [ ] Can hide with a player at night (but not first night)
 - [x] Hunter
@@ -54,8 +60,9 @@
     - [x] Can discover if a role is in play
 - [ ] Revealer
     - [ ] Can use reveal action
-- [ ] Lycan
-    - [ ] If killed by the werewolf, is turned instead
+- [x] Lycan
+    - [x] If killed by the werewolf, is turned instead
+    - [x] When turned, is on the werewolf team.
 - [ ] Mason
     - [ ] Is informed of other masons
     - [ ] reveal command implemented
@@ -67,8 +74,8 @@
 - [ ] Doppelganger
     - [x] Assumes target's role on target's death
     - [ ] Can choose a target at start of game
-- [ ] Monster
-    - [ ] Immune to werewolf attack
+- [x] Monster
+    - [x] Immune to werewolf attack
     - [x] Wins if alive when another team wins
 - [x] Turncoat
     - [x] Selects a team at start of game

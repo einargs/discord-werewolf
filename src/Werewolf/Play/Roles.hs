@@ -95,7 +95,7 @@ cupidReactionsToDeath
   :: forall m. (MonadVictory m, MonadCom m, MonadState Game m)
   => PlayerName -> m ()
 cupidReactionsToDeath deadName =
-  forAny Cupid $ \player ->
+  forAllPlayers [hasRole Cupid] $ \player ->
     when (notHexed player) $
       case player ^. #roleData of
         CupidData (Linked p1 p2)
@@ -153,8 +153,8 @@ killPlayer pn = killPlayerWithReaction pn roleReactionsToDeath
 
 -- | A data type that represents an action taken at night.
 data NightAction (m :: Type -> Type) = NightAction
-  { actionPrompt :: Maybe Text
-  , predicate :: Player -> Bool
+  { actionPrompt :: Player -> m (Maybe Text)
+  , predicates :: [Player -> Bool]
   , nightAction :: Player -> m ()
   }
 
@@ -164,12 +164,28 @@ nightActionPredicate :: Role -> Player -> Bool
 nightActionPredicate role player = hasRole role player && notHexed player
 
 -- | Convenience for building a NightAction without a prompt.
-silentAction :: Role -> (Player -> m ()) -> NightAction m
-silentAction role action = NightAction Nothing (nightActionPredicate role) action
+silentAction :: Monad m => Role -> (Player -> m ()) -> NightAction m
+silentAction role = NightAction
+  (const $ pure Nothing)
+  [nightActionPredicate role]
 
 -- | Convenience for building a NightAction with a prompt message.
-promptedAction :: Text -> Role -> (Player -> m ()) -> NightAction m
-promptedAction msg role action = NightAction (Just msg) (nightActionPredicate role) action
+promptedAction :: Monad m => Text -> Role -> (Player -> m ()) -> NightAction m
+promptedAction msg role = NightAction
+  (const $ pure $ Just msg)
+  [nightActionPredicate role]
+
+-- | Convenience for building a NightAction that uses a dynamically
+-- generated prompt message.
+dynamicallyPromptedAction
+  :: Monad m
+  => (Player -> m (Maybe Text))
+  -> Role
+  -> (Player -> m ())
+  -> NightAction m
+dynamicallyPromptedAction genPrompt role = NightAction
+  genPrompt
+  [nightActionPredicate role]
 
 -- | Tell any mystics how many werewolf players there are.
 mystic :: MonadWG m => NightAction m
@@ -251,7 +267,7 @@ setTurncoatTeam name team = do
   roleLens .= TurncoatData team (Just roundNum)
   where roleLens = selectPlayer name % #roleData
 
--- |
+-- | Setup the turncoat's initial team.
 turncoatFirstNight :: MonadWG m => NightAction m
 turncoatFirstNight = promptedAction requestMsg Turncoat $ \player -> do
   let playerName = player ^. #name
@@ -263,13 +279,13 @@ turncoatFirstNight = promptedAction requestMsg Turncoat $ \player -> do
   where requestMsg =
           "Please select a team to play on. Use `!w switch <team>` to select the team."
 
--- |
+-- | Allow the turncoat to change teams every other round.
 turncoatNightly :: MonadWG m => NightAction m
 turncoatNightly = promptedAction requestMsg Turncoat $ \Player{name, roleData} -> do
   roundNum <- roundCount
   let count =
         case roleData of
-          TurncoatData _ (Just count) -> count
+          TurncoatData _ (Just count') -> count'
           _ -> error "should have turncoat data with a count."
   -- The turncoat can only go once every other round.
   when (count + 1 < roundNum) $ do
@@ -288,26 +304,30 @@ turncoatNightly = promptedAction requestMsg Turncoat $ \Player{name, roleData} -
 
 -- | The werewolf actions.
 werewolf :: MonadWG m => NightAction m
-werewolf = promptedAction requestMsg Werewolf $ \Player{name, roleData} -> do
-  mbTarget <- requestOptionalAction name getWerewolfKill
-  kill mbTarget
+werewolf = dynamicallyPromptedAction mkRequestMsg Werewolf $ \Player{name, roleData} -> do
+  -- Needs to be inside the do block so that `name` is in scope.
+  let kill = \case
+        Nothing -> pure ()
+        Just target -> killTarget name target
+      requestKill =
+        requestOptionalAction name getWerewolfKill >>= kill
+  requestKill
   killTwice <- didWerecubDie
-  when killTwice $ do
-    mbSecondTarget <- requestOptionalActionWithMessage
-      name secondKillMsg getWerewolfKill
-    kill mbSecondTarget
+  when killTwice requestKill
   where
     getWerewolfKill Action{actionInfo} = case actionInfo of
       WerewolfKill target -> Just target
       _ -> Nothing
-    kill = \case
-      Nothing -> pure ()
-      Just target -> do
-        let lens = selectPlayer target % #roleData
-        roleData <- getv lens
-        case roleData of
-          LycanData Unturned -> lens .= LycanData Turned
-          _ -> killPlayer target
+    killTarget werewolfName target = do
+      let lens = selectPlayer target % #roleData
+      targetData <- getv lens
+      case targetData of
+        LycanData Unturned -> do
+          lens .= LycanData Turned
+          pm werewolfName $ targetWasLycanMsg target
+          pm target tellLycanTheyAreTurnedMsg
+        MonsterData -> pm werewolfName $ targetWasMonsterMsg target
+        _ -> killPlayer target
     didWerecubDie = do
       mbLynchedPlayer <- searchCurrentRound $ \case
         SuccessfullyLynched n -> Just n
@@ -317,13 +337,28 @@ werewolf = promptedAction requestMsg Werewolf $ \Player{name, roleData} -> do
         Just lynchedPlayer -> do
           role <- playerRole <$> getv (selectPlayer lynchedPlayer)
           pure $ role == Werecub
+    targetWasMonsterMsg target = T.concat
+      [ "You attempted to kill ", Desc.mention target, ", but were unable "
+      , "to because they are the monster."
+      ]
+    --couldNotKillTargetMsg target = T.concat
+    --  ["You were unable to kill ", Desc.mention target, "."]
+    targetWasLycanMsg target = T.concat
+      [Desc.mention target, " was a Lycan and has now been turned."]
+    tellLycanTheyAreTurnedMsg = "You were attacked by a werewolf and have now been turned."
+    mkRequestMsg _ = do
+      canKillTwice <- didWerecubDie
+      pure $ Just $ if canKillTwice
+        then secondKillRequestMsg
+        else requestMsg
     requestMsg = T.concat
       [ "Choose who to kill or pass on killing this round. "
       , "Use `!w kill @player` to kill someone. "
       , "Use `!w pass` to skip killing someone."
       ]
-    secondKillMsg = T.concat
-      [ "The werecub died during this turn, so you may kill a second time. "
+    secondKillRequestMsg = T.concat
+      [ "Choose who to kill or pass on killing this round. "
+      , "The werecub was lynched during this turn, so you may kill twice. "
       , "Use `!w kill @player` to kill someone. "
       , "Use `!w pass` to skip killing someone."
       ]
@@ -352,14 +387,46 @@ revealer = promptedAction requestMsg Revealer $ \Player{name} -> do
 
 -- | Tell the minion who is on the werewolf team.
 minionFirstNight :: MonadWG m => NightAction m
-minionFirstNight = NightAction Nothing (hasModifier Minion) $ \Player{name} -> do
+minionFirstNight = NightAction (const $ pure Nothing) [hasModifier Minion] $ \Player{name} -> do
   werewolfPlayers <- view (mapping #name) <$> queryPlayers [onTeam WerewolfTeam]
   let nameText = T.intercalate ", " $ Desc.mention <$> werewolfPlayers
       msg = T.concat ["The werewolf team consists of: ", nameText, "."]
   pm name msg
-  pure ()
 
-
+-- | Allow the huntress to kill if they haven't yet and want to.
+huntress :: MonadWG m => NightAction m
+huntress = dynamicallyPromptedAction mkRequestMsg Huntress $ \Player{name, roleData} ->
+  case roleData of
+    -- Do nothing if the huntress has already killed
+    HuntressData True -> pure ()
+    -- If the huntress has not yet killed, ask them if they want to
+    HuntressData False -> do
+      mbTarget <- requestOptionalAction name $ \Action{actionInfo} ->
+        case actionInfo of
+          HuntressKill target -> Just target
+          _ -> Nothing
+      case mbTarget of
+        Nothing -> pure ()
+        Just target -> do
+          killPlayer target
+          selectPlayer name % #roleData .= HuntressData True
+    _ -> error "The huntress night action was called on a player who is not a huntress."
+  where
+    mkRequestMsg Player{roleData} = case roleData of
+      HuntressData hasKilled -> pure $ Just $
+        if hasKilled
+           then alreadyKilledMsg
+           else requestMsg
+      _ -> error "The prompt creation for the huntress was called on a player that is not a huntress."
+    requestMsg = T.concat
+      [ "As the huntress, once per game you can choose to kill someone during "
+      , "the night. Use `!w hunt @player` to choose to kill someone or `!w pass` "
+      , "to skip killing someone tonight."
+      ]
+    alreadyKilledMsg = T.concat
+      [ "As the huntress, you have already killed once in this game. "
+      , "You can no longer kill."
+      ]
 
 -- | Un-hex all players.
 removeHexed :: MonadWG m => m ()
@@ -370,39 +437,57 @@ removeHexed = forPlayers [hasModifier Hexed] $ \Player{name} ->
 performActions :: forall m. MonadWG m => [NightAction m] -> m ()
 performActions actions = do
   -- send out all of the prompts for actions
-  forM_ actions $ \NightAction{actionPrompt, predicate} ->
-    case actionPrompt of
-      Just msg -> forPlayers [predicate] $ \Player{name} -> pm name msg
-      Nothing -> pure ()
+  forM_ actions $ \NightAction{actionPrompt, predicates} ->
+    forPlayers predicates $ \player@Player{name} ->
+      actionPrompt player >>= \case
+        Just msg -> pm name msg
+        Nothing -> pure ()
   -- actually get the actions
-  forM_ actions $ \NightAction{predicate, nightAction} ->
-    forPlayers [predicate] nightAction
+  forM_ actions $ \NightAction{predicates, nightAction} ->
+    forPlayers predicates nightAction
 
 -- | Take first night actions.
 firstNightActions :: MonadWG m => m ()
-firstNightActions = performActions $
+firstNightActions = performActions
   [ -- The minion goes before the turncoat so that the turncoat isn't included
     -- in the list of werewolf team players.
     minionFirstNight
     -- The turncoat goes first so that their team is established for any other
     -- actions.
   , turncoatFirstNight
+  -- Required actions generally go first.
+  -- , masonFirstNight
+  -- , cupidFirstNight
+  -- , doppelgangerFirstNight
   , seer
   , prophet
   , mentalist
   , mystic
+  -- The guardian angel goes on the first night because their protection
+  -- extends into the day
+  -- , guardianAngel
   ]
 
 -- | Take normal nightly actions.
 nightlyActions :: MonadWG m => m ()
-nightlyActions = performActions $
-  [ -- The turncoat goes first because they go first on the first night.
+nightlyActions = performActions
+  [ -- The spellcaster goes before most other roles so that they can pre-empt other
+    -- roles (though using the hex at night is kind of a waste).
+    -- spellcaster
+  -- The turncoat goes first because they go first on the first night.
     turncoatNightly
+  -- The warlock goes before the seer in case the warlock curses someone the seer
+  -- looks at that night.
+  -- , warlock
   , seer
   , prophet
   , mentalist
   , mystic
-  -- SOME HERE
+  -- , bodyguard
+  -- , guardianAngel
+  -- , harlot
+  -- , gunner
+  , huntress
   , revealer
   , werewolf
   -- , doctor

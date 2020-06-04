@@ -53,6 +53,7 @@ capabilityError = \case
   ScopeMustBe Public -> "That command must be sent in the public channel."
   ScopeMustBe Private -> "That command must be sent as a DM to the bot."
   OtherPlayerStatusMustBe pn s -> T.concat [mention pn, " must be ", status s]
+  PassInvalid -> "There is nothing to skip using `!w pass`."
   OtherReason txt -> txt
 
 -- | Describe the role; provides singular and plural versions.

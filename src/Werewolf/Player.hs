@@ -12,6 +12,7 @@ module Werewolf.Player
   , allRoles
   , initialDataFor
   , roleGroup
+  , rolesInGroup
   , Player(..)
   , PlayerName(..)
   , Role(..)
@@ -79,7 +80,7 @@ data RoleData
   | ToughWolfData Bool -- ^ Has been lynched once
   | TraitorData
   | WarlockData Bool -- ^ Has cursed someone
-  | DoctorData
+  | DoctorData Bool -- ^ Has revived self and lost doctor ability
   | SeerData
   | BodyguardData
   | GuardianAngelData (Maybe PlayerName) -- ^ last guarded
@@ -95,7 +96,7 @@ data RoleData
   | LycanData LycanStatus -- ^ Has the lycan been turned
   | MasonData
   | GunnerData Int -- ^ Remaining bullets
-  | PrinceData
+  | PrinceData Bool -- ^ Has been lynched once
   | DoppelgangerData (Maybe PlayerName) -- ^ doppelganger target
   | MonsterData
   | TurncoatData
@@ -113,7 +114,7 @@ initialDataFor = \case
   ToughWolf -> ToughWolfData False
   Traitor -> TraitorData
   Warlock -> WarlockData False
-  Doctor -> DoctorData
+  Doctor -> DoctorData False
   Seer -> SeerData
   Bodyguard -> BodyguardData
   GuardianAngel -> GuardianAngelData Nothing
@@ -129,7 +130,7 @@ initialDataFor = \case
   Lycan -> LycanData Unturned
   Mason -> MasonData
   Gunner -> GunnerData 2
-  Prince -> PrinceData
+  Prince -> PrinceData False
   Doppelganger -> DoppelgangerData Nothing
   Monster -> MonsterData
   Turncoat -> TurncoatData NeutralTeam Nothing
@@ -144,7 +145,7 @@ roleForData = \case
   ToughWolfData _ -> ToughWolf
   TraitorData -> Traitor
   WarlockData _ -> Warlock
-  DoctorData -> Doctor
+  DoctorData _ -> Doctor
   SeerData -> Seer
   BodyguardData -> Bodyguard
   GuardianAngelData _ -> GuardianAngel
@@ -160,7 +161,7 @@ roleForData = \case
   LycanData _ -> Lycan
   MasonData -> Mason
   GunnerData _ -> Gunner
-  PrinceData -> Prince
+  PrinceData _ -> Prince
   DoppelgangerData _ -> Doppelganger
   MonsterData -> Monster
   TurncoatData _ _ -> Turncoat
@@ -170,6 +171,7 @@ data Modifier
   = Drunk
   | Minion
   | Hexed
+  | Cursed
   deriving (Show, Eq)
 
 data Team
@@ -237,7 +239,7 @@ teamsForRoleData = \case
   ToughWolfData _ -> (w, w)
   TraitorData -> (w, v)
   WarlockData _ -> (w, v)
-  DoctorData -> (v, v)
+  DoctorData _ -> (v, v)
   SeerData -> (v, v)
   BodyguardData -> (v, v)
   GuardianAngelData _ -> (v, v)
@@ -254,7 +256,7 @@ teamsForRoleData = \case
   LycanData Unturned -> (v, w)
   MasonData -> (v, v)
   GunnerData _ -> (v, v)
-  PrinceData -> (v, v)
+  PrinceData _ -> (v, v)
   DoppelgangerData _ -> (n, v)
   MonsterData -> (n, w)
   TurncoatData _ _ -> (n, n)
@@ -272,13 +274,14 @@ data RoleGroup
   | Guardians
   | Chaos
   | Information
+  deriving (Show, Eq)
 
 rolesInGroup :: RoleGroup -> [Role]
-rolesInGroup = \case
-  Assassins -> [Huntress, Hunter, Gunner, Revealer]
-  Guardians -> [GuardianAngel, Bodyguard, Doctor]
-  Chaos -> [Cupid, MadScientist]
-  Information -> [Seer, Mystic, Prophet, Mentalist]
+rolesInGroup group = filter f [minBound..maxBound]
+  where
+    f r = case roleGroup r of
+      Just g -> group == g
+      Nothing -> False
 
 roleGroup :: Role -> Maybe RoleGroup
 roleGroup = \case

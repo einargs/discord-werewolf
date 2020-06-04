@@ -147,7 +147,7 @@ generateRoles config@GameConfig{drunkChance, werewolfTeamPercentage} count = do
   where
     convert = fmap (fmap toModRole)
     randomAddDrunks :: MonadRandom m => ModRole -> m ModRole
-    randomAddDrunks mr = percentage drunkChance >>= \case
+    randomAddDrunks mr = flip fmap (percentage drunkChance) $ \case
       True -> addMod Drunk mr
       False -> mr
 
@@ -172,6 +172,6 @@ initPlayer name (ModRole modifiers role) = Player
 -- instance.
 setupGame :: (MonadRandom m) => GameConfig -> [PlayerName] -> m Game
 setupGame config playerNames = do
-  roles <- generateRolesFor playerNames
+  roles <- generateRolesFor config playerNames
   let players = uncurry initPlayer <$> roles
   pure $ initGame players
