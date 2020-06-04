@@ -4,73 +4,73 @@
   and their roles.
   
 ## Roles
-[ ] Werewolf
-    [x] kill ability
-    [ ] discover ability
-[x] Werecub
-    [x] If dies to lynching, werewolf can kill twice
-    [x] If werewolf dies, becomes werewolf
-[ ] Werekitten
-    [x] seen as villager
-    [ ] gunner always misses
-[ ] Spellcaster
-    [x] hexed player cannot use an action
-    [ ] can hex players
-[ ] Tough Wolf
-    [ ] Gunner always misses while toughness shield in place
-    [ ] Protected from lynching by toughness shield
-[x] Traitor
-    [x] Becomes the first werewolf team role to die.
-[ ] Warlock
-    [ ] Cursed players are seen as being on the werewolf team
-    [ ] Can curse players
-[ ] Doctor
-    [ ] Can revive players
-    [ ] If revives self, loses doctor ability
-[x] Seer
-    [x] Can see target's role
-[ ] Bodyguard
-    [ ] Can guard a player
-[ ] Guardian Angel
-    [ ] Can protect a player day+night
-    [ ] Cannot protect same player twice in a row
-[ ] Huntress
-    [ ] Can kill a player once
-[ ] Harlot
-    [ ] Can hide with a player at night (but not first night)
-[x] Hunter
-    [x] Can take (optional) revenge on a player after dying
-[x] Mentalist
-    [x] Can compare two players
-[ ] Mad Scientist
-    [ ] On death explodes two adjacent players
-    [ ] Add a command to check what players are adjacent
-[ ] Cupid
-    [x] Kills a linked player if the other linked player dies 
-    [ ] Can link players at the start of a round.
-[x] Mystic
-    [x] Can discover how many werewolf players there are
-[x] Prophet
-    [x] Can discover if a role is in play
-[ ] Revealer
-    [ ] Can use reveal action
-[ ] Lycan
-    [ ] If killed by the werewolf, is turned instead
-[ ] Mason
-    [ ] Is informed of other masons
-    [ ] reveal command implemented
-[ ] Gunner
-    [ ] Can shoot during the day
-    [ ] Can shoot at night
-[ ] Prince
-    [ ] Protected from lynching once
-[ ] Doppelganger
-    [x] Assumes target's role on target's death
-    [ ] Can choose a target at start of game
-[ ] Monster
-    [ ] Immune to werewolf attack
-    [x] Wins if alive when another team wins
-[x] Turncoat
-    [x] Selects a team at start of game
-    [x] Can switch teams
-[x] Villager
+- [ ] Werewolf
+    - [x] kill ability
+    - [ ] discover ability
+- [x] Werecub
+    - [x] If dies to lynching, werewolf can kill twice
+    - [x] If werewolf dies, becomes werewolf
+- [ ] Werekitten
+    - [x] seen as villager
+    - [ ] gunner always misses
+- [ ] Spellcaster
+    - [x] hexed player cannot use an action
+    - [ ] can hex players
+- [ ] Tough Wolf
+    - [ ] Gunner always misses while toughness shield in place
+    - [ ] Protected from lynching by toughness shield
+- [x] Traitor
+    - [x] Becomes the first werewolf team role to die.
+- [ ] Warlock
+    - [ ] Cursed players are seen as being on the werewolf team
+    - [ ] Can curse players
+- [ ] Doctor
+    - [ ] Can revive players
+    - [ ] If revives self, loses doctor ability
+- [x] Seer
+    - [x] Can see target's role
+- [ ] Bodyguard
+    - [ ] Can guard a player
+- [ ] Guardian Angel
+    - [ ] Can protect a player day+night
+    - [ ] Cannot protect same player twice in a row
+- [ ] Huntress
+    - [ ] Can kill a player once
+- [ ] Harlot
+    - [ ] Can hide with a player at night (but not first night)
+- [x] Hunter
+    - [x] Can take (optional) revenge on a player after dying
+- [x] Mentalist
+    - [x] Can compare two players
+- [ ] Mad Scientist
+    - [ ] On death explodes two adjacent players
+    - [ ] Add a command to check what players are adjacent
+- [ ] Cupid
+    - [x] Kills a linked player if the other linked player dies 
+    - [ ] Can link players at the start of a round.
+- [x] Mystic
+    - [x] Can discover how many werewolf players there are
+- [x] Prophet
+    - [x] Can discover if a role is in play
+- [ ] Revealer
+    - [ ] Can use reveal action
+- [ ] Lycan
+    - [ ] If killed by the werewolf, is turned instead
+- [ ] Mason
+    - [ ] Is informed of other masons
+    - [ ] reveal command implemented
+- [ ] Gunner
+    - [ ] Can shoot during the day
+    - [ ] Can shoot at night
+- [ ] Prince
+    - [ ] Protected from lynching once
+- [ ] Doppelganger
+    - [x] Assumes target's role on target's death
+    - [ ] Can choose a target at start of game
+- [ ] Monster
+    - [ ] Immune to werewolf attack
+    - [x] Wins if alive when another team wins
+- [x] Turncoat
+    - [x] Selects a team at start of game
+    - [x] Can switch teams
+- [x] Villager
