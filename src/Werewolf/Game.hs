@@ -69,6 +69,7 @@ data ActionInfo
   | LynchVote Bool
   | WerewolfKill PlayerName
   | SpellcasterHex PlayerName
+  | WarlockCurse PlayerName
   | DoctorRevive PlayerName
   | SeerClairvoyance PlayerName
   | BodyguardProtect PlayerName
@@ -144,8 +145,16 @@ playerCan
       (WerewolfData, WerewolfKill target) -> requireStd Night Private
         <> requireLivePlayer target
         <> requireNotSelf target "The werewolf cannot kill themselves."
+      (WarlockData hasCursed, WarlockCurse target) -> mconcat
+        [ requireAlive
+        , requireScope Private
+        , requireLivePlayer target
+        , require (not hasCursed) "The warlock can only curse one person per game."
+        ]
       (SpellcasterData hasHexed, SpellcasterHex _) -> mconcat
-        [ requireStd Night Private
+        [ requireAlive
+        , requireScope Private
+        , requireLivePlayer target
         , require (not hasHexed) "The spellcaster can only hex one person per game."
         ]
       (DoctorData hasRevivedSelf, DoctorRevive target) -> mconcat
@@ -180,7 +189,10 @@ playerCan
         , requireNotSelf target "The huntress cannot kill themselves."
         , require (not hasKilled) "The huntress can only kill one person per game."
         ]
-      (HarlotData, HarlotHideWith _) -> requireStd Night Private
+      (HarlotData, HarlotHideWith target) -> mconcat
+        [ requireStd Night Private
+        , requireLivePlayer target
+        ]
       (HunterData hasTakenRevenge, HunterRevenge target) -> mconcat
         [ requireStatus Dead
         , requireScope Public
