@@ -1,5 +1,5 @@
 module Werewolf.Play.Final
-  (
+  ( playGame
   ) where
 
 import Control.Monad.Random

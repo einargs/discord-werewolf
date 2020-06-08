@@ -455,6 +455,8 @@ firstNightActions = performActions
     -- The turncoat goes first so that their team is established for any other
     -- actions.
   , turncoatFirstNight
+  -- The warlock goes if they want to curse someone so that it affects the seer.
+  -- , warlock
   -- Required actions generally go first.
   -- , masonFirstNight
   -- , cupidFirstNight

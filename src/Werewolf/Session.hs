@@ -55,7 +55,9 @@ instance MonadVictory Session where
     game <- get
     Session $ lift $ lift $ lift $ Left (vic, game)
 
-newtype Suspension = Suspension { unSuspension :: (Coroutine SuspendSession (Either SessionResult)) SessionResult }
+newtype Suspension = Suspension {
+  unSuspension :: (Coroutine SuspendSession (Either SessionResult)) SessionResult
+  }
 
 startSession :: StdGen -> Game -> Session Victory -> Suspension
 startSession gen game = Suspension . flip runStateT game . flip evalRandT gen . unSession

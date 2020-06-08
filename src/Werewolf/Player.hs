@@ -85,7 +85,9 @@ data RoleData
   | BodyguardData
   | GuardianAngelData (Maybe PlayerName) -- ^ last guarded
   | HuntressData Bool -- ^ Has the huntress killed someone
-  | HarlotData
+  | HarlotData (Maybe PlayerName)
+    -- ^ The player the Harlot is hiding with. Is checked for
+    -- being a werewolf before being assigned.
   | HunterData Bool -- ^ Has taken revenge
   | MentalistData
   | MadScientistData
@@ -119,7 +121,7 @@ initialDataFor = \case
   Bodyguard -> BodyguardData
   GuardianAngel -> GuardianAngelData Nothing
   Huntress -> HuntressData False
-  Harlot -> HarlotData
+  Harlot -> HarlotData Nothing
   Hunter -> HunterData False
   Mentalist -> MentalistData
   MadScientist -> MadScientistData
@@ -259,7 +261,7 @@ teamsForRoleData = \case
   PrinceData _ -> (v, v)
   DoppelgangerData _ -> (n, v)
   MonsterData -> (n, w)
-  TurncoatData _ _ -> (n, n)
+  TurncoatData team _ -> (team, team)
   VillagerData -> (v, v)
   where
     w = WerewolfTeam
@@ -283,6 +285,7 @@ rolesInGroup group = filter f [minBound..maxBound]
       Just g -> group == g
       Nothing -> False
 
+-- | Get what role group, if any the role is part of.
 roleGroup :: Role -> Maybe RoleGroup
 roleGroup = \case
   -- Assassins
@@ -328,9 +331,11 @@ playerRole = roleForData . roleData
 -- seer.
 playerTeams :: Player -> (Team, Team)
 playerTeams Player {roleData, modifiers} =
-  if Minion `elem` modifiers
-    then (WerewolfTeam, WerewolfTeam)
-    else teamsForRoleData roleData
+  if | Minion `elem` modifiers -> (WerewolfTeam, WerewolfTeam)
+     | Cursed `elem` modifiers ->
+       let (original, _) = teamsForRoleData roleData
+           in (original, WerewolfTeam)
+     | otherwise -> teamsForRoleData roleData
 
 -- | Returns the player's actual team.
 actualTeam :: Player -> Team

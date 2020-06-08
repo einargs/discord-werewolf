@@ -1,12 +1,46 @@
 # To-Do List
-- Expand the declareVictory function to also list the players on the winning team
-- After a game ends, print information about each player and their role
-  and their roles.
-  - At the start of the game, record the roles of the players so that at the end
-    of the game, e.g., the doppelganger is listed as the doppelganger and not whatever
-    role they become.
-  - Possibly also include information about 
-- Allow werewolf team members to be minions
+
+## General
+- [ ] Expand the declareVictory function to also list the players on the winning
+      team.
+- [ ] Implement a system that allows for the werewolf coroutine to tell the
+      executor to start a timer and the executor to pass an event saying a
+      timer has triggered.
+- [ ] After a game ends, print information about each player and their role
+      and their roles.
+  - [ ] At the start of the game, record the roles of the players so that at the
+        end of the game, e.g., the doppelganger is listed as the doppelganger
+        and not whatever role they became.
+  - [ ] Post a text file containing the log of the events.
+- [ ] Allow werewolf team members to be minions
+- [ ] Allow people to pause/unpause the game
+- [ ] Accusations and voting
+  - [ ] Have a time period where you can't vote to accuse without it being
+        unanimous
+  - [ ] For an accsusation after the time period, there will be a bot-controlled
+        time limit (10 seconds) during which someone else can second. If someone
+        seconds the accusation, it proceeds to a full vote. During the wait for
+        a second, no other actions can be taken.
+  - [ ] If a vote has a majority in favor of lynching the target, the target is
+        lynched.
+
+## Meta Commands
+- [ ] help
+  - [ ] help for roles
+    - [ ] command to get your current role's info
+    - [ ] command to get a list of roles
+    - [ ] command to get info about an arbitrary role (will include commands)
+  - [ ] help for commands
+    - [ ] command for getting the list of commands you can perform and what
+          they do
+    - [ ] command for getting info about an arbitrary command.
+- [ ] pause/unpause to start/stop the timer
+- [ ] start the game
+
+## Generic Actions
+- [ ] Accuse someone
+- [ ] Second an accusation
+- [ ] Vote on an accusation
 
 ## Roles
 - [ ] Werewolf
@@ -28,8 +62,9 @@
 - [x] Traitor
     - [x] Becomes the first werewolf team role to die.
 - [ ] Warlock
-    - [ ] Cursed players are seen as being on the werewolf team
+    - [x] Cursed players are seen as being on the werewolf team
     - [ ] Can curse players
+    - [x] Can go on the first night
 - [ ] Doctor
     - [ ] Can revive players
     - [ ] If revives self, loses doctor ability
@@ -37,9 +72,14 @@
     - [x] Can see target's role
 - [ ] Bodyguard
     - [ ] Can guard a player
+    - [ ] Dies if the protectee is attacked
+    - [ ] Can choose not to guard anyone
+    - [ ] Cannot guard self (no point)
 - [ ] Guardian Angel
     - [ ] Can protect a player day+night
     - [ ] Cannot protect same player twice in a row
+    - [ ] Can guard self
+    - [ ] Can choose not to guard anyone
 - [x] Huntress
     - [x] Can kill a player once
 - [ ] Harlot
@@ -58,8 +98,8 @@
     - [x] Can discover how many werewolf players there are
 - [x] Prophet
     - [x] Can discover if a role is in play
-- [ ] Revealer
-    - [ ] Can use reveal action
+- [x] Revealer
+    - [x] Can use reveal action
 - [x] Lycan
     - [x] If killed by the werewolf, is turned instead
     - [x] When turned, is on the werewolf team.

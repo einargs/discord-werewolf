@@ -151,7 +151,7 @@ playerCan
         , requireLivePlayer target
         , require (not hasCursed) "The warlock can only curse one person per game."
         ]
-      (SpellcasterData hasHexed, SpellcasterHex _) -> mconcat
+      (SpellcasterData hasHexed, SpellcasterHex target) -> mconcat
         [ requireAlive
         , requireScope Private
         , requireLivePlayer target
