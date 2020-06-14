@@ -23,6 +23,8 @@ module Werewolf.Play.Base
   , roundCount
   , dayToNight
   , clearActionBuffer
+  , addModifier
+  , isProtected
   ) where
 
 import Control.Monad.Random
@@ -33,6 +35,7 @@ import Optics (view, (%), Lens', lens, (^.))
 import Data.Sequence.Optics (viewL)
 import qualified Data.Sequence as S
 import Data.Maybe (isJust)
+import qualified Data.List as List
 import Data.Sequence ((|>), ViewL(..))
 import Optics.State.Operators ((%=), (.=))
 
@@ -400,3 +403,15 @@ clearActionBuffer = do
   forM_ buffer $ \Action{playerName} ->
     pm playerName "Your extra actions have been rejected."
   #actionBuffer .= S.empty
+
+-- | Add a modifier to a player, ensuring that it doesn't cause duplicates
+-- if that player already has the modifier.
+addModifier :: (MonadState Game m) => Modifier -> PlayerName -> m ()
+addModifier modifier name =
+  selectPlayer name % #modifiers %= List.union [modifier]
+
+-- | Check if the player is protected.
+isPlayerProtected
+  :: (MonadState Game m, MonadCom m, MonadVictory m)
+  => PlayerName -> m Bool
+isPlayerProtected pn = hasModifier Protected <$> getv (selectPlayer pn)

@@ -14,7 +14,6 @@ import Optics.State.Operators ((%=), (.=))
 
 import Data.Text (Text)
 import Data.Kind (Type)
-import Data.Maybe (mapMaybe)
 import qualified Data.Text as T
 
 import Util.Text (tshow)
@@ -140,6 +139,7 @@ roleReactionsToDeath pn = forM_ reactions $ \reaction -> reaction pn
   where reactions =
           [ hunterReactionsToDeath
           , cupidReactionsToDeath
+          , werecubReactionsToDeath
           , traitorReactionsToDeath
           , doppelgangerReactionsToDeath
           ]
@@ -150,6 +150,23 @@ killPlayer
   => PlayerName
   -> m ()
 killPlayer pn = killPlayerWithReaction pn roleReactionsToDeath
+
+-- | The result of an attack on a player.
+data AttackResult
+  = WasProtected
+  | WasKilled
+
+-- | Check if the player is protected by a bodyguard or guardian
+-- angel and kill them if they aren't.
+--
+-- Returns whether the attack succeeded or failed.
+attackPlayer
+  :: (MonadState Game m, MonadCom m, MonadVictory m)
+  => PlayerName
+  -> m AttackResult
+attackPlayer name = isPlayerProtected name >>= \case
+  True -> pure WasProtected
+  False -> killPlayer name $> WasKilled
 
 -- | A data type that represents an action taken at night.
 data NightAction (m :: Type -> Type) = NightAction
@@ -408,7 +425,10 @@ huntress = dynamicallyPromptedAction mkRequestMsg Huntress $ \Player{name, roleD
       case mbTarget of
         Nothing -> pure ()
         Just target -> do
-          killPlayer target
+          result <- attackPlayer target
+          pm name $ case result of
+                WasProtected -> failedToKillMsg
+                WasKilled -> successfullyKilledMsg
           selectPlayer name % #roleData .= HuntressData True
     _ -> error "The huntress night action was called on a player who is not a huntress."
   where
@@ -427,11 +447,47 @@ huntress = dynamicallyPromptedAction mkRequestMsg Huntress $ \Player{name, roleD
       [ "As the huntress, you have already killed once in this game. "
       , "You can no longer kill."
       ]
+    successfullyKilledMsg =
+      "You successfully killed your target."
+    failedToKillMsg =
+      "You were unable to kill your target."
 
 -- | Un-hex all players.
 removeHexed :: MonadWG m => m ()
 removeHexed = forPlayers [hasModifier Hexed] $ \Player{name} ->
   selectPlayer name % #modifiers %= filter (/= Hexed)
+
+-- | Warlock actions.
+warlock :: forall m. MonadWG m => NightAction m
+warlock = dynamicallyPromptedAction mkRequestMsg Warlock $
+  isWarlockAndHasNotCursed (pure ()) $ \Player{name} -> do
+    mbTarget <- requestOptionalAction name $ \Action{actionInfo} ->
+      case actionInfo of
+        WarlockCurse target -> Just target
+        _ -> Nothing
+    case mbTarget of
+      Nothing -> pure ()
+      Just target -> do
+        addModifier Cursed target
+        -- Note that the warlock has now cursed someone
+        selectPlayer name % #roleData .= WarlockData True
+  where
+    isWarlockAndHasNotCursed :: m a -> (Player -> m a) -> Player -> m a
+    isWarlockAndHasNotCursed hasCursedAction f player@Player{roleData} =
+      case roleData of
+        WarlockData True -> hasCursedAction
+        WarlockData False -> f player
+        _ -> error "Player must be a warlock."
+    mkRequestMsg = isWarlockAndHasNotCursed (pure $ Just hasCursedMsg) \_ -> pure $ Just requestMsg
+    requestMsg = T.concat
+      [ "As the warlock, once per game you can choose to curse someone during "
+      , "the night or day. Use `!w curse @player` to curse someone or `!w pass` "
+      , "to skip cursing someone tonight."
+      ]
+    hasCursedMsg = T.concat
+      [ "As the warlock, you have already cursed one person in this game. "
+      , "As such, you cannot curse another."
+      ]
 
 -- | Perform the list of night actions in the given order.
 performActions :: forall m. MonadWG m => [NightAction m] -> m ()
@@ -456,7 +512,7 @@ firstNightActions = performActions
     -- actions.
   , turncoatFirstNight
   -- The warlock goes if they want to curse someone so that it affects the seer.
-  -- , warlock
+  , warlock
   -- Required actions generally go first.
   -- , masonFirstNight
   -- , cupidFirstNight
@@ -480,7 +536,7 @@ nightlyActions = performActions
     turncoatNightly
   -- The warlock goes before the seer in case the warlock curses someone the seer
   -- looks at that night.
-  -- , warlock
+  , warlock
   , seer
   , prophet
   , mentalist

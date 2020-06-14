@@ -1,5 +1,11 @@
 # To-Do List
 
+## Working on
+- [ ] Implementing checks for protection
+- [ ] Implementing bodyguard and guardian angel
+- [ ] Implementing removal of protected modifier from all players at beginning
+      of night.
+
 ## General
 - [ ] Expand the declareVictory function to also list the players on the winning
       team.
@@ -23,6 +29,8 @@
         a second, no other actions can be taken.
   - [ ] If a vote has a majority in favor of lynching the target, the target is
         lynched.
+  - [ ] If you accuse someone on a night and your accusation fails, you cannot
+        accuse again.
 
 ## Meta Commands
 - [ ] help
@@ -64,6 +72,8 @@
 - [ ] Warlock
     - [x] Cursed players are seen as being on the werewolf team
     - [ ] Can curse players
+      - [x] At night
+      - [ ] At day
     - [x] Can go on the first night
 - [ ] Doctor
     - [ ] Can revive players

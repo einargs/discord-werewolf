@@ -85,9 +85,7 @@ data RoleData
   | BodyguardData
   | GuardianAngelData (Maybe PlayerName) -- ^ last guarded
   | HuntressData Bool -- ^ Has the huntress killed someone
-  | HarlotData (Maybe PlayerName)
-    -- ^ The player the Harlot is hiding with. Is checked for
-    -- being a werewolf before being assigned.
+  | HarlotData
   | HunterData Bool -- ^ Has taken revenge
   | MentalistData
   | MadScientistData
@@ -121,7 +119,7 @@ initialDataFor = \case
   Bodyguard -> BodyguardData
   GuardianAngel -> GuardianAngelData Nothing
   Huntress -> HuntressData False
-  Harlot -> HarlotData Nothing
+  Harlot -> HarlotData
   Hunter -> HunterData False
   Mentalist -> MentalistData
   MadScientist -> MadScientistData
@@ -174,6 +172,7 @@ data Modifier
   | Minion
   | Hexed
   | Cursed
+  | Protected
   deriving (Show, Eq)
 
 data Team
