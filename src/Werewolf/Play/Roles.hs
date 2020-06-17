@@ -122,7 +122,7 @@ hunterReactionsToDeath deadName = do
       case actionInfo of
         HunterRevenge target -> Just target
         _ -> Nothing
-    whenJust mbTarget $ attackPlayer deadName
+    whenJust mbTarget attackPlayer
   where msg = T.concat
           [ "As a hunter, once you have died you can optionally select one person "
           , "to kill. Use `!w pass` to skip this, and use `!w revenge @player "
@@ -150,11 +150,6 @@ killPlayer
   -> m ()
 killPlayer pn = killPlayerWithReaction pn roleReactionsToDeath
 
--- | The result of an attack on a player.
-data AttackResult
-  = WasProtected
-  | WasKilled
-
 -- | Check if the player is protected by a bodyguard or guardian
 -- angel and kill them if they aren't.
 --
@@ -162,27 +157,10 @@ data AttackResult
 attackPlayer
   :: (MonadState Game m, MonadCom m, MonadVictory m)
   => PlayerName
-  -> m AttackResult
-attackPlayer name = isPlayerProtected name >>= \case
-  True -> pure WasProtected
-  False -> killPlayer name $> WasKilled
-
--- | Attack a player with standard success and failure messages.
-stdAttackPlayer
-  :: (MonadState Game m, MonadCom m, MonadVictory m)
-  => PlayerName -- ^ Attacker
-  -> PlayerName -- ^ Target
   -> m ()
-stdAttackPlayer attacker target = do
-  result <- attackPlayer target
-  pm attacker $ case result of
-    WasKilled -> successfullyKilledMsg
-    WasProtected -> failedToKillMsg
-  where
-    successfullyKilledMsg =
-      T.concat [ "You successfully killed ", Desc.mention target, "."]
-    failedToKillMsg =
-      T.concat [ "You were unable to kill ", Desc.mention target, "."]
+attackPlayer name = isPlayerProtected name >>= \case
+  True -> pure ()
+  False -> killPlayer name
 
 -- | A data type that represents an action taken at night.
 data NightAction (m :: Type -> Type) = NightAction
@@ -335,7 +313,7 @@ turncoatNightly = promptedAction requestMsg Turncoat $ \Player{name, roleData} -
 
 -- | The werewolf actions.
 werewolf :: MonadWG m => NightAction m
-werewolf = dynamicallyPromptedAction mkRequestMsg Werewolf $ \Player{name, roleData} -> do
+werewolf = dynamicallyPromptedAction mkRequestMsg Werewolf $ \Player{name} -> do
   -- Needs to be inside the do block so that `name` is in scope.
   let kill = \case
         Nothing -> pure ()
@@ -358,7 +336,7 @@ werewolf = dynamicallyPromptedAction mkRequestMsg Werewolf $ \Player{name, roleD
           pm werewolfName $ targetWasLycanMsg target
           pm target tellLycanTheyAreTurnedMsg
         MonsterData -> pm werewolfName $ targetWasMonsterMsg target
-        _ -> stdAttackPlayer werewolfName target
+        _ -> attackPlayer target
     didWerecubDie = do
       mbLynchedPlayer <- searchCurrentRound $ \case
         SuccessfullyLynched n -> Just n
@@ -403,22 +381,20 @@ revealer = promptedAction requestMsg Revealer $ \Player{name} -> do
       _ -> Nothing
   whenJust mbTarget $ \target -> do
     role <- playerRole <$> getv (selectPlayer target)
-    let attack = attackPlayer target >>= \case
-          WasProtected -> pm name $ guiltyWasProtectedMsg target
-          WasKilled -> pm name $ guiltyWasKilledMsg target
+    let attackGuilty = do
+          pm name $ guiltyWasTargetedMsg target
+          attackPlayer target
     case role of
-      Werewolf -> attack
-      Monster -> attack
+      Werewolf -> attackGuilty
+      Monster -> attackGuilty
       _ -> do
         pm name $ innocentWasTargetedMsg target
         killPlayer name
   where
-    guiltyWasProtectedMsg target =
-      T.concat [Desc.mention target, " was guilty, but was protected from your attack."]
-    guiltyWasKilledMsg target =
-      T.concat [Desc.mention target, " was guilty and has died."]
+    guiltyWasTargetedMsg target =
+      T.concat [Desc.mention target, " is guilty."]
     innocentWasTargetedMsg target =
-      T.concat [Desc.mention target, " was innocent; you will now die."]
+      T.concat [Desc.mention target, " is innocent; you will now die."]
     requestMsg = T.concat
       [ "As the revealer, you can choose to target one person per night. "
       , "If that person is the werewolf or the monster, they die; otherwise, "
@@ -447,7 +423,7 @@ huntress = dynamicallyPromptedAction mkRequestMsg Huntress $ \Player{name, roleD
           HuntressKill target -> Just target
           _ -> Nothing
       whenJust mbTarget $ \target -> do
-        stdAttackPlayer name target
+        attackPlayer target
         selectPlayer name % #roleData .= HuntressData True
     _ -> error "The huntress night action was called on a player who is not a huntress."
   where
@@ -469,8 +445,8 @@ huntress = dynamicallyPromptedAction mkRequestMsg Huntress $ \Player{name, roleD
 
 -- | Remove a modifier from all players in the game.
 removeModifier :: MonadWG m => Modifier -> m ()
-removeModifier mod = forPlayers [hasModifier mod] $ \Player{name} ->
-  selectPlayer name % #modifiers %= filter (/= mod)
+removeModifier modifier = forPlayers [hasModifier modifier] $ \Player{name} ->
+  selectPlayer name % #modifiers %= filter (/= modifier)
 
 -- | Un-hex all players.
 removeHexed :: MonadWG m => m ()
@@ -549,11 +525,24 @@ spellcaster = dynamicallyPromptedAction mkRequestMsg Spellcaster $
 masonFirstNight :: forall m. MonadWG m => NightAction m
 masonFirstNight = silentAction Mason $ \Player{name} -> do
   masons <- queryPlayers [hasRole Mason]
-  let masonNames = (view #name) <$> masons
+  let masonNames = view #name <$> masons
       otherMasons = filter (/= name) masonNames
       nameText = T.intercalate ", " $ Desc.mention <$> otherMasons
       msg = T.concat ["The other masons are: ", nameText, "."]
   pm name msg
+
+-- |
+bodyguard :: forall m. MonadWG m => NightAction m
+bodyguard = promptedAction requestMsg Bodyguard $ \Player{name} -> do
+  target <- requestAction name $ \Action{actionInfo} ->
+    case actionInfo of
+      BodyguardProtect target -> Just target
+      _ -> Nothing
+  target
+  where
+    requestMsg = T.concat
+      -- TODO: expand
+      [ "Please choose someone to bodyguard."]
 
 -- | Perform the list of night actions in the given order.
 performActions :: forall m. MonadWG m => [NightAction m] -> m ()
