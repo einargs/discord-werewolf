@@ -4,7 +4,7 @@ module Werewolf.Play.Final
 
 import Control.Monad.Random
 import Control.Monad.State.Class
-
+import Data.List ((\\))
 import Optics.State.Operators ((%=), (.=))
 
 import Werewolf.Play.Base
@@ -29,16 +29,29 @@ gameStart = do
 
 day :: MonadWG m => m ()
 day = do
+  -- Remove the Hexed effect at the beginning of the day.
   removeHexed
 
 night :: MonadWG m => m ()
 night = do
   -- Transition from day to night
   dayToNight
+  -- Get a list of the players alive at the start of the night
+  -- so we can figure out who died at the end of the night.
+  playersAtStart <- view #name <$> queryPlayers []
+  -- Remove the protected status from all players, as protectors will soon choose
+  -- new wards.
+  removeProtected
   -- Perform role actions
   nightlyActions
   -- At the end of the night, clear the action buffer.
   clearActionBuffer
+  -- Figure out who died during the night
+  playersAtEnd <- view #name <$> queryPlayers []
+  let deadPlayers = playersAtEnd \\ playersAtStart
+  announce $ T.concat
+    [ "During the night, these players died: "
+    , T.intercalate " " deadPlayers ]
   endRound
 
 -- |

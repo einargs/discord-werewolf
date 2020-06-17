@@ -2,6 +2,7 @@
 
 ## Working on
 - [ ] Implementing checks for protection
+  - [ ] Should attackers learn whether the target died or was protected? no
 - [ ] Implementing bodyguard and guardian angel
 - [ ] Implementing removal of protected modifier from all players at beginning
       of night.
@@ -9,6 +10,7 @@
 ## General
 - [ ] Expand the declareVictory function to also list the players on the winning
       team.
+- [x] List who died during the night.
 - [ ] Implement a system that allows for the werewolf coroutine to tell the
       executor to start a timer and the executor to pass an event saying a
       timer has triggered.
@@ -31,6 +33,20 @@
         lynched.
   - [ ] If you accuse someone on a night and your accusation fails, you cannot
         accuse again.
+- [ ] Protection (from bodyguards and guardian angels)
+  - [ ] Protects from:
+    - [ ] werewolf
+    - [ ] lynching
+    - [ ] huntress
+    - [ ] hunter
+    - [ ] targeted by revealer
+    - [ ] shot by gunner
+    - [ ] mad scientist explosion
+    - [ ] cupid-link
+    - [ ] harlot sleeping with werewolf team member
+  - [ ] Does not protect from:
+    - [ ] revealer backlash
+    - [ ] gunner backlash
 
 ## Meta Commands
 - [ ] help
@@ -64,6 +80,8 @@
 - [ ] Spellcaster
     - [x] hexed player cannot use an action
     - [ ] can hex players
+      - [x] At night
+      - [ ] At day
 - [ ] Tough Wolf
     - [ ] Gunner always misses while toughness shield in place
     - [ ] Protected from lynching by toughness shield
@@ -94,6 +112,11 @@
     - [x] Can kill a player once
 - [ ] Harlot
     - [ ] Can hide with a player at night (but not first night)
+    - [ ] If hiding, is protected from attacks by:
+      - [ ] werewolf
+      - [ ] hunter
+      - [ ] huntress
+    - [ ] If hides with a werewolf team member, they die (unless protected)
 - [x] Hunter
     - [x] Can take (optional) revenge on a player after dying
 - [x] Mentalist
@@ -114,7 +137,7 @@
     - [x] If killed by the werewolf, is turned instead
     - [x] When turned, is on the werewolf team.
 - [ ] Mason
-    - [ ] Is informed of other masons
+    - [x] Is informed of other masons
     - [ ] reveal command implemented
 - [ ] Gunner
     - [ ] Can shoot during the day

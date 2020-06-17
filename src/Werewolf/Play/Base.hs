@@ -24,7 +24,7 @@ module Werewolf.Play.Base
   , dayToNight
   , clearActionBuffer
   , addModifier
-  , isProtected
+  , isPlayerProtected
   ) where
 
 import Control.Monad.Random
@@ -300,6 +300,8 @@ killPlayerWithReaction name reaction = do
   statusLens .= Dead
   addEvent $ PlayerDeath name
   pm name "You have died."
+  phase <- getv #currentPhase
+  when (phase == Day) $ announce $ T.concat [Desc.mention name, " is dead."]
   reaction name
   checkWinConditions
   where statusLens = selectPlayer name % #status

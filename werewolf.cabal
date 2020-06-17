@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 97ad9b31b78752c9b09d38e36012b0217caaa08f33a4cd188d1e041cde9ce106
+-- hash: a6c96339686174ead2aed04f2c2c9e3187b3652d9b646903c77f246ce023fb6c
 
 name:           werewolf
 version:        0.1.0.0
@@ -31,6 +31,7 @@ library
       Handler
       ParseCommand
       Run
+      Util.Maybe
       Util.Optics
       Util.Text
       Werewolf.Descriptions

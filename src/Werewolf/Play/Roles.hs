@@ -1,6 +1,6 @@
 module Werewolf.Play.Roles
-  ( killPlayer
-  , removeHexed
+  ( removeHexed
+  , removeProtected
   , nightlyActions
   , firstNightActions
   ) where
@@ -14,10 +14,13 @@ import Optics.State.Operators ((%=), (.=))
 
 import Data.Text (Text)
 import Data.Kind (Type)
+import Data.Functor (($>))
+
 import qualified Data.Text as T
 
 import Util.Text (tshow)
 import Util.Optics (getv)
+import Util.Maybe (whenJust)
 import Werewolf.Game
 import Werewolf.Player
 import qualified Werewolf.Descriptions as Desc
@@ -85,7 +88,7 @@ doppelgangerReactionsToDeath deadName =
     when (notHexed player) $
       case player ^. #roleData of
         DoppelgangerData (Just target)
-          | deadName == target -> do
+          | deadName == target ->
               (player ^. #name) `assumeRoleOf` target
         _ -> pure ()
 
@@ -98,15 +101,13 @@ cupidReactionsToDeath deadName =
     when (notHexed player) $
       case player ^. #roleData of
         CupidData (Linked p1 p2)
-          | p1 == deadName ->
-            killIfAlive p2
-          | p2 == deadName ->
-            killIfAlive p1
+          | p1 == deadName -> killIfAlive p2
+          | p2 == deadName -> killIfAlive p1
         _ -> pure ()
   where
     killIfAlive :: PlayerName -> m ()
     killIfAlive pn = do
-      live <- isAlive <$> (getv $ selectPlayer pn)
+      live <- isAlive <$> getv (selectPlayer pn)
       when live $ killPlayer pn
 
 -- | This function implements a hunter's revenge mechanic that
@@ -121,9 +122,7 @@ hunterReactionsToDeath deadName = do
       case actionInfo of
         HunterRevenge target -> Just target
         _ -> Nothing
-    case mbTarget of
-      Nothing -> pure ()
-      Just target -> killPlayer target
+    whenJust mbTarget $ attackPlayer deadName
   where msg = T.concat
           [ "As a hunter, once you have died you can optionally select one person "
           , "to kill. Use `!w pass` to skip this, and use `!w revenge @player "
@@ -167,6 +166,23 @@ attackPlayer
 attackPlayer name = isPlayerProtected name >>= \case
   True -> pure WasProtected
   False -> killPlayer name $> WasKilled
+
+-- | Attack a player with standard success and failure messages.
+stdAttackPlayer
+  :: (MonadState Game m, MonadCom m, MonadVictory m)
+  => PlayerName -- ^ Attacker
+  -> PlayerName -- ^ Target
+  -> m ()
+stdAttackPlayer attacker target = do
+  result <- attackPlayer target
+  pm attacker $ case result of
+    WasKilled -> successfullyKilledMsg
+    WasProtected -> failedToKillMsg
+  where
+    successfullyKilledMsg =
+      T.concat [ "You successfully killed ", Desc.mention target, "."]
+    failedToKillMsg =
+      T.concat [ "You were unable to kill ", Desc.mention target, "."]
 
 -- | A data type that represents an action taken at night.
 data NightAction (m :: Type -> Type) = NightAction
@@ -310,9 +326,7 @@ turncoatNightly = promptedAction requestMsg Turncoat $ \Player{name, roleData} -
       case actionInfo of
         TurncoatSwitch team -> Just team
         _ -> Nothing
-    case mbTeam of
-      Just team -> setTurncoatTeam name team
-      Nothing -> pure ()
+    whenJust mbTeam $ setTurncoatTeam name
   where requestMsg = T.concat
           [ "Please select a team to play on. "
           , "Use `!w switch <team>` to select the team. "
@@ -344,7 +358,7 @@ werewolf = dynamicallyPromptedAction mkRequestMsg Werewolf $ \Player{name, roleD
           pm werewolfName $ targetWasLycanMsg target
           pm target tellLycanTheyAreTurnedMsg
         MonsterData -> pm werewolfName $ targetWasMonsterMsg target
-        _ -> killPlayer target
+        _ -> stdAttackPlayer werewolfName target
     didWerecubDie = do
       mbLynchedPlayer <- searchCurrentRound $ \case
         SuccessfullyLynched n -> Just n
@@ -387,20 +401,30 @@ revealer = promptedAction requestMsg Revealer $ \Player{name} -> do
     case actionInfo of
       RevealerKill target -> Just target
       _ -> Nothing
-  case mbTarget of
-    Nothing -> pure ()
-    Just target -> do
-      role <- playerRole <$> getv (selectPlayer target)
-      case role of
-        Werewolf -> killPlayer target
-        Monster -> killPlayer target
-        _ -> killPlayer name
-  where requestMsg = T.concat
-          [ "As the revealer, you can choose to target one person per night. "
-          , "If that person is the werewolf or the monster, they die; otherwise, "
-          , "you die. Use `!w reveal @player` to choose who to reveal or `!w pass` "
-          , "to skip."
-          ]
+  whenJust mbTarget $ \target -> do
+    role <- playerRole <$> getv (selectPlayer target)
+    let attack = attackPlayer target >>= \case
+          WasProtected -> pm name $ guiltyWasProtectedMsg target
+          WasKilled -> pm name $ guiltyWasKilledMsg target
+    case role of
+      Werewolf -> attack
+      Monster -> attack
+      _ -> do
+        pm name $ innocentWasTargetedMsg target
+        killPlayer name
+  where
+    guiltyWasProtectedMsg target =
+      T.concat [Desc.mention target, " was guilty, but was protected from your attack."]
+    guiltyWasKilledMsg target =
+      T.concat [Desc.mention target, " was guilty and has died."]
+    innocentWasTargetedMsg target =
+      T.concat [Desc.mention target, " was innocent; you will now die."]
+    requestMsg = T.concat
+      [ "As the revealer, you can choose to target one person per night. "
+      , "If that person is the werewolf or the monster, they die; otherwise, "
+      , "you die. Use `!w reveal @player` to choose who to reveal or `!w pass` "
+      , "to skip."
+      ]
 
 -- | Tell the minion who is on the werewolf team.
 minionFirstNight :: MonadWG m => NightAction m
@@ -422,14 +446,9 @@ huntress = dynamicallyPromptedAction mkRequestMsg Huntress $ \Player{name, roleD
         case actionInfo of
           HuntressKill target -> Just target
           _ -> Nothing
-      case mbTarget of
-        Nothing -> pure ()
-        Just target -> do
-          result <- attackPlayer target
-          pm name $ case result of
-                WasProtected -> failedToKillMsg
-                WasKilled -> successfullyKilledMsg
-          selectPlayer name % #roleData .= HuntressData True
+      whenJust mbTarget $ \target -> do
+        stdAttackPlayer name target
+        selectPlayer name % #roleData .= HuntressData True
     _ -> error "The huntress night action was called on a player who is not a huntress."
   where
     mkRequestMsg Player{roleData} = case roleData of
@@ -447,38 +466,43 @@ huntress = dynamicallyPromptedAction mkRequestMsg Huntress $ \Player{name, roleD
       [ "As the huntress, you have already killed once in this game. "
       , "You can no longer kill."
       ]
-    successfullyKilledMsg =
-      "You successfully killed your target."
-    failedToKillMsg =
-      "You were unable to kill your target."
+
+-- | Remove a modifier from all players in the game.
+removeModifier :: MonadWG m => Modifier -> m ()
+removeModifier mod = forPlayers [hasModifier mod] $ \Player{name} ->
+  selectPlayer name % #modifiers %= filter (/= mod)
 
 -- | Un-hex all players.
 removeHexed :: MonadWG m => m ()
-removeHexed = forPlayers [hasModifier Hexed] $ \Player{name} ->
-  selectPlayer name % #modifiers %= filter (/= Hexed)
+removeHexed = removeModifier Hexed
 
--- | Warlock actions.
+-- | Remove the protected status from all players.
+removeProtected :: MonadWG m => m ()
+removeProtected = removeModifier Protected
+
+-- | Warlock night actions.
 warlock :: forall m. MonadWG m => NightAction m
 warlock = dynamicallyPromptedAction mkRequestMsg Warlock $
-  isWarlockAndHasNotCursed (pure ()) $ \Player{name} -> do
+  handleStatus (pure ()) $ \Player{name} -> do
     mbTarget <- requestOptionalAction name $ \Action{actionInfo} ->
       case actionInfo of
         WarlockCurse target -> Just target
         _ -> Nothing
-    case mbTarget of
-      Nothing -> pure ()
-      Just target -> do
-        addModifier Cursed target
-        -- Note that the warlock has now cursed someone
-        selectPlayer name % #roleData .= WarlockData True
+    whenJust mbTarget $ \target -> do
+      addModifier Cursed target
+      -- Note that the warlock has now cursed someone
+      selectPlayer name % #roleData .= WarlockData True
+      pm name $ T.concat ["You successfully cursed ", Desc.mention target, "."]
   where
-    isWarlockAndHasNotCursed :: m a -> (Player -> m a) -> Player -> m a
-    isWarlockAndHasNotCursed hasCursedAction f player@Player{roleData} =
+    handleStatus :: m a -> (Player -> m a) -> Player -> m a
+    handleStatus hasCursed hasNotCursed player@Player{roleData} =
       case roleData of
-        WarlockData True -> hasCursedAction
-        WarlockData False -> f player
+        WarlockData True -> hasCursed
+        WarlockData False -> hasNotCursed player
         _ -> error "Player must be a warlock."
-    mkRequestMsg = isWarlockAndHasNotCursed (pure $ Just hasCursedMsg) \_ -> pure $ Just requestMsg
+    mkRequestMsg =
+      let m = pure . Just
+      in handleStatus (m hasCursedMsg) $ const $ m requestMsg
     requestMsg = T.concat
       [ "As the warlock, once per game you can choose to curse someone during "
       , "the night or day. Use `!w curse @player` to curse someone or `!w pass` "
@@ -488,6 +512,48 @@ warlock = dynamicallyPromptedAction mkRequestMsg Warlock $
       [ "As the warlock, you have already cursed one person in this game. "
       , "As such, you cannot curse another."
       ]
+
+-- | Spellcaster night actions.
+spellcaster :: forall m. MonadWG m => NightAction m
+spellcaster = dynamicallyPromptedAction mkRequestMsg Spellcaster $
+  handleStatus (pure ()) $ \Player{name} -> do
+    mbTarget <- requestOptionalAction name $ \Action{actionInfo} ->
+      case actionInfo of
+        SpellcasterHex target -> Just target
+        _ -> Nothing
+    whenJust mbTarget $ \target -> do
+        addModifier Hexed target
+        -- note that the spellcaster has now cursed someone
+        selectPlayer name % #roleData .= SpellcasterData True
+        pm name $ T.concat ["You successfully hexed ", Desc.mention target, "."]
+  where
+    handleStatus :: m a -> (Player -> m a) -> Player -> m a
+    handleStatus hasHexed hasNotHexed player@Player{roleData} =
+      case roleData of
+        SpellcasterData True -> hasHexed
+        SpellcasterData False -> hasNotHexed player
+    mkRequestMsg =
+      let m = pure . Just
+      in handleStatus (m hasHexedMsg) $ const $ m requestMsg
+    requestMsg = T.concat
+      [ "As the spellcaster, once per game you can choose to hex someone during "
+      , "the night or day. Use `!w hex @player` to hex someone or `!w pass` "
+      , "to skip hexing someone tonight."
+      ]
+    hasHexedMsg = T.concat
+      [ "As the spellcaster, you have already hexed one person in this game. "
+      , "As such, you cannot hex another."
+      ]
+
+-- | Tell the masons the other members of their team.
+masonFirstNight :: forall m. MonadWG m => NightAction m
+masonFirstNight = silentAction Mason $ \Player{name} -> do
+  masons <- queryPlayers [hasRole Mason]
+  let masonNames = (view #name) <$> masons
+      otherMasons = filter (/= name) masonNames
+      nameText = T.intercalate ", " $ Desc.mention <$> otherMasons
+      msg = T.concat ["The other masons are: ", nameText, "."]
+  pm name msg
 
 -- | Perform the list of night actions in the given order.
 performActions :: forall m. MonadWG m => [NightAction m] -> m ()
@@ -514,15 +580,16 @@ firstNightActions = performActions
   -- The warlock goes if they want to curse someone so that it affects the seer.
   , warlock
   -- Required actions generally go first.
-  -- , masonFirstNight
+  , masonFirstNight
   -- , cupidFirstNight
   -- , doppelgangerFirstNight
   , seer
   , prophet
   , mentalist
   , mystic
-  -- The guardian angel goes on the first night because their protection
-  -- extends into the day
+  -- The protectors go on the first night because their protection
+  -- extends into the day.
+  -- , bodyguard
   -- , guardianAngel
   ]
 
@@ -531,9 +598,9 @@ nightlyActions :: MonadWG m => m ()
 nightlyActions = performActions
   [ -- The spellcaster goes before most other roles so that they can pre-empt other
     -- roles (though using the hex at night is kind of a waste).
-    -- spellcaster
+    spellcaster
   -- The turncoat goes first because they go first on the first night.
-    turncoatNightly
+  , turncoatNightly
   -- The warlock goes before the seer in case the warlock curses someone the seer
   -- looks at that night.
   , warlock
