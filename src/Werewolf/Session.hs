@@ -6,6 +6,7 @@ module Werewolf.Session
   , Suspension
   , startSession
   , stepSession
+  , Interrupt(..)
   ) where
 
 import Control.Monad.Coroutine
@@ -14,25 +15,41 @@ import Control.Monad.Random
 import Data.Text (Text)
 
 import Werewolf.Player
-import Werewolf.Game (Game, ActionInfo, Action, Message, Scope, Victory)
+import Werewolf.Game (Game, ActionInfo, Action, Message, Scope, Victory, TimerName)
 
 -- | A type class representing a monad's capability to send
 -- messages to players and the public chat as well as get the
--- next action to be processed.
+-- next action to be processed. Also deals with setting, canceling,
+-- and recieving timers.
+--
+-- Essentially this monad is about communicating with the outside
+-- world/hosting executor.
 class (Monad m) => MonadCom m where
   -- | Send a message.
   sendMessage :: Message -> m ()
-  -- | Get the next action to be processed.
-  getAction :: m Action
+  -- | Get the next interrupt to be processed.
+  getInterrupt :: m Interrupt
+  -- | Start the given timer.
+  setTimer :: TimerName -> m ()
+  -- | Cancel the given timer.
+  cancelTimer :: TimerName -> m ()
 
 -- | A type class representing a monad's capability to short-circuit
 -- and declare a victory for a given team.
 class (Monad m) => MonadVictory m where
   exitWithVictory :: Victory -> m a
 
+-- | Represents the events that a session can be given after it
+-- awaits.
+data Interrupt
+  = TimerInterrupt TimerName
+  | ActionInterrupt Action
+
 data SuspendSession a
-  = AwaitAction (Action -> a)
+  = AwaitInterrupt (Interrupt -> a)
   | SendMessage Message a
+  | SetTimer TimerName
+  | CancelTimer TimerName
   deriving (Functor)
 
 type SessionResult = (Victory, Game)
@@ -47,8 +64,12 @@ deriving instance MonadRandom InternalSession => MonadRandom Session
 instance MonadCom Session where
   sendMessage m = Session $ lift $ lift $
     suspend $ SendMessage m (pure ())
-  getAction = Session $ lift $ lift $
-    suspend $ AwaitAction pure
+  getInterrupt = Session $ lift $ lift $
+    suspend $ AwaitInterrupt pure
+  setTimer timer = Session $ lift $ lift $
+    suspend $ SetTimer timer
+  cancelTimer timer = Session $ lift $ lift $
+    suspend $ CancelTimer timer
 
 instance MonadVictory Session where
   exitWithVictory vic = do

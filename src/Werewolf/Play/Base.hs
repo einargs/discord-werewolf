@@ -25,6 +25,11 @@ module Werewolf.Play.Base
   , clearActionBuffer
   , addModifier
   , isPlayerProtected
+  , withTimer
+  , untilTimer
+  , resetTimer
+  , enqueueTo
+  , dequeueFrom
   ) where
 
 import Control.Monad.Random
@@ -42,11 +47,12 @@ import Optics.State.Operators ((%=), (.=))
 import qualified Data.Text as T
 
 import Util.Optics (getv)
+import Util.Maybe (whenJust)
 import Util.Text
 import Werewolf.Game
 import Werewolf.Player
 import qualified Werewolf.Descriptions as Desc
-import Werewolf.Session (MonadCom(..), MonadVictory(..))
+import Werewolf.Session (MonadCom(..), MonadVictory(..), Interrupt(..), Timer(..))
 
 -- | Although mechanically it is possible for a game to
 -- not contain a player with a given player name, part
@@ -73,48 +79,117 @@ addEvent e = #rounds %= appendEvent where
     appendEvent [] = error "The rounds list should never be empty."
     appendEvent ((Round events):rest) = Round (e:events):rest
 
--- | Deque an action matching the predicate from the front of the action
+-- | Dequeue a value matching the predicate from the front of the specified
+-- buffer if any values match.
+searchQueue
+  :: MonadState Game m
+  => Lens Game (Seq a)
+  -> (a -> Maybe b)
+  -> m (Maybe b)
+searchQueue bufferLens elemPred = do
+  buffer <- getv bufferLens
+  let mbIdx = S.findIndexL (isJust . elemPred) buffer
+  let mbElem = mbIdx >>= (`S.lookup` buffer)
+  whenJust mbIdx $ \idx -> bufferLens %= S.deleteAt idx
+  -- If the index is present, that means that the predicate
+  -- returned `Just`, and thus the value at that location
+  -- (a) is present and (b) when passed to `elemPred` will
+  -- result in `Just`.
+  pure $ mbElem >>= elemPred
+
+-- | Dequeue an action matching the predicate from the front of the action
 -- queue if it is present.
 searchAction
   :: MonadState Game m
   => (Action -> Maybe a)
   -> m (Maybe a)
-searchAction actionPred = do
-  buffer <- getv #actionBuffer
-  let mbIdx = S.findIndexL (isJust . actionPred) buffer
-  let mbAction = mbIdx >>= (`S.lookup` buffer)
-  case mbIdx of
-    Just idx -> #actionBuffer %= S.deleteAt idx
-    Nothing -> pure ()
-  -- If the index is present, that means that the predicate
-  -- returned `Just`, and thus the value at that location
-  -- (a) is present and (b) when passed to `actionPred` will
-  -- result in `Just`.
-  pure $ mbAction >>= actionPred
+searchAction = searchQueue #actionBuffer
+
+-- | Utility for dequeueing a value from the front of a buffer.
+dequeueFrom :: MonadState Game m => Lens' Game (Seq a) -> m (Maybe a)
+dequeueFrom bufferLens = do
+  vl <- getv $ bufferLens % viewL
+  case vl of
+    EmptyL -> pure Nothing
+    a :< rest -> do
+      bufferLens .= rest
+      pure $ Just a
+
+-- | Utility for enqueueing a value to the back of a buffer.
+enqueueTo :: MonadState Game m => Lens' Game (Seq a) -> a -> m ()
+enqueueTo bufferLens v = bufferLens %= (|> v)
 
 -- | Deques an action from the front of the buffer if there is
 -- an action in the buffer.
 dequeueAction :: MonadState Game m => m (Maybe Action)
-dequeueAction = do
-  vl <- getv $ #actionBuffer % viewL
-  case vl of
-    EmptyL -> pure Nothing
-    a :< rest -> do
-      #actionBuffer .= rest
-      pure $ Just a
+dequeueAction = dequeueFrom #actionBuffer
+
+-- | Enque an action at the back of the queue.
+enqueueAction :: MonadState Game m => Action -> m ()
+enqueueAction = enqueueTo #actionBuffer
+
+-- | Get an action using MonadCom, buffering any timer interrupts that occur.
+getAction :: (MonadState Game m, MonadCom m) => m Action
+getAction = getInterrupt >>= \case
+  TimerInterrupt timer -> enqueueTo #timerBuffer timer >> getAction
+  ActionInterrupt action -> pure action
+
+-- | Check the timer buffer and then action buffer for any buffered
+-- interrupts; if any are found, return them. If none are found, wait
+-- for a new interrupt.
+nextInterrupt :: (MonadState Game m, MonadCom m) => m Interrupt
+nextInterrupt =
+  check #timerBuffer TimerInterrupt $
+    check #actionBuffer ActionInterrupt $
+      getInterrupt
+  where
+    check bufferLens toInterrupt alt =
+      dequeueFrom bufferLens >>= \case
+        Nothing -> alt
+        Just v -> pure $ toInterrupt v
+
+-- | Wait until the timer goes off, handling any actions with the handler
+-- and enqueueing any other timers that go off.
+untilTimer :: (MonadState Game m, MonadCom m) => TimerName -> (Action -> m ()) -> m ()
+untilTimer timer handler = do
+  -- We process all actions in the action buffer
+  processActionBuffer
+  -- Then check the timer buffer for the given timer.
+  checkTimerBuffer >>= \case
+    -- In this case, the timer already went off so we just immediately return.
+    True -> pure ()
+    -- If the timer hasn't gone off, we process actions
+    -- until it does go off.
+    False -> loop
+  where
+    -- | Check if the timer is in the buffer
+    checkTimerBuffer = isJust <$> searchQueue #timerBuffer (== timer)
+    -- | Process all actions in the action buffer with the handler.
+    processActionBuffer = do
+      mbAct <- dequeueAction
+      whenJust mbAct $ \act ->
+        handler act >> processActionBuffer
+    -- | Process interrupts until the timer goes off
+    loop = getInterrupt >>= \case
+      TimerInterrupt timer'
+        | timer' == timer -> pure () -- we end the looping
+        | otherwise -> enqueueTo #timerBuffer timer' >> loop
+      ActionInterrupt action -> handler action >> loop
+
+-- | Set and wait for a timer with `untilTimer`.
+withTimer :: (MonadState Game m, MonadCom m) => TimerName -> (Action -> m ()) -> m ()
+withTimer timer handler = setTimer timer >> untilTimer timer handler
+
+-- | Reset a timer by cancelling and starting it.
+resetTimer :: (MonadCom m) => TimerName -> m ()
+resetTimer timer = cancelTimer timer >> setTimer timer
 
 -- | Get the next action in the buffer. If no action is in the buffer,
 -- get an action using MonadCom.
 nextAction :: (MonadState Game m, MonadCom m) => m Action
 nextAction = do
   mbAct <- dequeueAction
-  case mbAct of
-    Nothing -> getAction
-    Just act -> pure act
-
--- | Enque an action at the back of the queue.
-enqueueAction :: MonadState Game m => Action -> m ()
-enqueueAction action = #actionBuffer %= (|> action)
+  maybe getAction pure mbAct
 
 -- | Only use this to send messages; it makes sure to log the message
 -- in the event log.

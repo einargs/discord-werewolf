@@ -87,6 +87,7 @@ arg = (space1 >>)
 
 werewolfAction :: Parser ActionInfo
 werewolfAction = action "accuse" Accuse <*> playerName
+  <|> action "second" SecondAccusation <*> arg playerName
   <|> action "vote" LynchVote <*> arg yesOrNo
   <|> action "kill" WerewolfKill <*> arg playerName
   <|> action "hex" SpellcasterHex <*> arg playerName

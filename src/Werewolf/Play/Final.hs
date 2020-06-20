@@ -31,6 +31,8 @@ day :: MonadWG m => m ()
 day = do
   -- Remove the Hexed effect at the beginning of the day.
   removeHexed
+  withTimer AccusationsAllowedTimer $ handleDayAction UnanimousAccusations
+  withTimer NightEndTimer $ handleDayAction MajorityAccusations
 
 night :: MonadWG m => m ()
 night = do

@@ -8,6 +8,7 @@ module Werewolf.Game
   , Game(..)
   , Phase(..)
   , Round(..)
+  , TimerName(..)
   , Capability(..)
   , CapabilityError(..)
   , playerCan
@@ -66,6 +67,7 @@ data Action = Action
 -- enter.
 data ActionInfo
   = Accuse PlayerName
+  | SecondAccusation PlayerName -- ^ The player you are seconding
   | LynchVote Bool
   | WerewolfKill PlayerName
   | SpellcasterHex PlayerName
@@ -291,11 +293,18 @@ playerCan
 newtype Round = Round [Event]
   deriving (Show, Eq)
 
+data TimerName
+  = AccusationsAllowedTimer
+  | NightEndTimer
+  | SecondingAccusationTimer
+  deriving (Show, Eq, Ord)
+
 data Game = Game
   { currentPhase :: Phase
   , players :: [Player]
   , rounds :: [Round]
   , actionBuffer :: Seq Action
+  , timerBuffer :: Seq TimerName
   } deriving (Show, Eq)
 makeFieldLabelsWith noPrefixFieldLabels ''Game
 

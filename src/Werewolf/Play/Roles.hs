@@ -3,6 +3,8 @@ module Werewolf.Play.Roles
   , removeProtected
   , nightlyActions
   , firstNightActions
+  , AccusationStatus(..)
+  , handleDayAction
   ) where
 
 import Control.Monad.Random
@@ -606,3 +608,48 @@ nightlyActions = performActions
   , werewolf
   -- , doctor
   ]
+
+data AccusationStatus
+  = UnanimousAccusations
+  | MajorityAccusations
+
+handleUnanimousAccusation :: forall m. MonadWG m => PlayerName -> PLayerName -> m ()
+handleUnanimousAccusation accuser accused = do
+  announce startMsg
+  setTimer SecondingAccusationTimer
+  waitForSecondLoop []
+  where
+    waitForSecondLoop seconds = nextAction >>= \case
+      TimerInterrupt SecondingAccusationTimer ->
+        announce "Accusation has failed; unable to get enough votes."
+      TimerInterrupt otherTimer -> enqueueTo #timerBuffer otherTimer
+      ActionInterrupt Action{actionInfo, playerName} -> case actionInfo of
+        SecondAccusation target
+          | accuser == target -> do
+              let seconds' = playerName : seconds
+              resetTimer SecondingAccusationTimer
+              waitForSecondLoop seconds'
+          | otherwise -> do
+              pm playerName "You may only second the current accusation."
+              waitForSecondLoop seconds
+        _ -> pm playerName accusationInProgressMsg >> waitForSecondLoop seconds
+    accusationInProgressMsg = T.concat
+      [ "An accusation is currently in progress; until it is finished you cannot "
+      , "perform any other actions."
+      ]
+    startMsg = T.concat
+      [ Desc.mention accuser,
+      , " has accused "
+      , Desc.mention accused
+      , ". All players must unanimously agree with the accusation for it to succeed. "
+      , "Use `!w second @accuser` to agree with the accusation. There is a ten second "
+      , "time limit that is reset every time someone seconds the accusation."
+      ]
+
+-- | Handle an action that happens during the day.
+handleDayAction :: forall m. MonadWG m => AccusationStatus -> Action -> m ()
+handleDayAction accusationStatus Action{actionInfo, playerName} = case actionInfo of
+  Accuse target -> case accusationStatus of
+    UnanimousAccusations -> handleUnanimousAccusation playerName target
+    MajorityAccusations -> 
+  _ -> error "TODO" -- TODO
